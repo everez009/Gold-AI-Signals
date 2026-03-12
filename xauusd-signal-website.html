@@ -75,7 +75,7 @@
     .card-label{font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
     .card-title{font-family:'Unbounded',sans-serif;font-size:13px;font-weight:700;margin-bottom:5px}
     .card-sub{font-size:10px;color:var(--muted)}
-    .upload-zone{margin-top:14px;border:1px dashed var(--border);border-radius:2px;padding:20px 16px;text-align:center;transition:border-color 0.2s;cursor:pointer}
+    .upload-zone{display:block;margin-top:14px;border:1px dashed var(--border);border-radius:2px;padding:20px 16px;text-align:center;transition:border-color 0.2s;cursor:pointer;user-select:none}
     .upload-zone:hover{border-color:var(--gold-dark)}.upload-zone.dragover{border-color:var(--gold);background:rgba(212,175,55,0.05)}
     .upload-icon{font-size:22px;margin-bottom:6px;opacity:0.5}
     .upload-text{font-size:11px;color:var(--muted)}.upload-text strong{color:var(--gold)}
@@ -181,28 +181,35 @@
       <div class="card-label">► Higher Timeframe</div>
       <div class="card-title" id="htf-label">DAILY CHART</div>
       <div class="card-sub">Structure · Trend · VWAP · Key Levels</div>
-      <div class="upload-zone" id="htf-zone" onclick="document.getElementById('htf-input').click()">
+      <input type="file" id="htf-input" accept="image/*" onchange="loadImage(event,'htf')" style="display:none"/>
+      <label for="htf-input" class="upload-zone" id="htf-zone">
         <div class="upload-icon">📈</div>
         <div class="upload-text"><strong>Drop or click</strong> to upload</div>
         <div class="upload-text" style="margin-top:4px;font-size:10px;">PNG · JPG · WEBP</div>
-      </div>
+      </label>
       <img class="preview-img" id="htf-preview" style="display:none"/>
       <button class="remove-btn" id="htf-remove" style="display:none" onclick="removeImage('htf')">✕ Remove</button>
-      <input type="file" id="htf-input" accept="image/*" onchange="loadImage(event,'htf')"/>
     </div>
     <div class="upload-card" id="ltf-card">
       <div class="card-label">► Lower Timeframe</div>
       <div class="card-title" id="ltf-label">4H CHART</div>
       <div class="card-sub">Entry · VWAP · Order Blocks · Triggers</div>
-      <div class="upload-zone" id="ltf-zone" onclick="document.getElementById('ltf-input').click()">
+      <input type="file" id="ltf-input" accept="image/*" onchange="loadImage(event,'ltf')" style="display:none"/>
+      <label for="ltf-input" class="upload-zone" id="ltf-zone">
         <div class="upload-icon">📊</div>
         <div class="upload-text"><strong>Drop or click</strong> to upload</div>
         <div class="upload-text" style="margin-top:4px;font-size:10px;">PNG · JPG · WEBP</div>
-      </div>
+      </label>
       <img class="preview-img" id="ltf-preview" style="display:none"/>
       <button class="remove-btn" id="ltf-remove" style="display:none" onclick="removeImage('ltf')">✕ Remove</button>
-      <input type="file" id="ltf-input" accept="image/*" onchange="loadImage(event,'ltf')"/>
     </div>
+  </div>
+
+  <!-- API KEY INPUT -->
+  <div class="tf-row" style="margin-bottom:20px">
+    <div class="section-label">► Anthropic API Key</div>
+    <input type="password" id="api-key-input" class="notes-textarea" style="min-height:auto;padding:10px 12px;margin-top:10px;font-size:12px;letter-spacing:1px" placeholder="sk-ant-api03-..." autocomplete="off" oninput="checkReady()"/>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px">Your key is sent directly to api.anthropic.com only · Never stored · Get yours at console.anthropic.com</div>
   </div>
 
   <button class="analyze-btn" id="analyze-btn" disabled onclick="analyze()">⬡ &nbsp;GENERATE COMPLETE SIGNAL</button>
@@ -542,12 +549,20 @@ function removeImage(key) {
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
   zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('dragover');
+    e.preventDefault();
+    zone.classList.remove('dragover');
     const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) loadImage({target:{files:[file]}}, key);
+    if (file && file.type.startsWith('image/')) {
+      // Manually set the file on the input so onchange fires
+      const input = document.getElementById(key+'-input');
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      loadImage({target:{files:[file]}}, key);
+    }
   });
 });
-function checkReady() { document.getElementById('analyze-btn').disabled = !(state.htf.base64 && state.ltf.base64); }
+function checkReady() { const key = document.getElementById('api-key-input')?.value.trim(); document.getElementById('analyze-btn').disabled = !(state.htf.base64 && state.ltf.base64 && key); }
 
 document.querySelectorAll('.chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -594,12 +609,25 @@ async function analyze() {
     + (history ? '\n\n' + history : '')
     + (notes ? `\n\nTRADER'S MANUAL NOTES FOR THIS SESSION:\n${notes}` : '');
 
+  const apiKey = document.getElementById('api-key-input').value.trim();
+  if (!apiKey) {
+    const box = document.getElementById('error-box');
+    box.textContent = '✕ Please enter your Anthropic API key above.';
+    box.classList.add('visible');
+    document.getElementById('loading-box').classList.remove('visible');
+    checkReady();
+    return;
+  }
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-	  "x-api-key": "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",    // ← add this
-  "anthropic-version": "2023-06-01"        // ← add this
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
