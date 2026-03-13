@@ -1,0 +1,364 @@
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.wrap { padding: 1rem 0; font-family: var(--font-sans); display: flex; flex-direction: column; gap: 16px; }
+.card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem; }
+.card-title { font-size: 11px; font-weight: 500; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+
+.drop-zone { border: 1.5px dashed var(--color-border-secondary); border-radius: var(--border-radius-lg); padding: 2rem 1rem; text-align: center; cursor: pointer; transition: background 0.2s; position: relative; }
+.drop-zone:hover, .drop-zone.drag-over { background: var(--color-background-secondary); }
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.drop-icon { width: 40px; height: 40px; margin: 0 auto 10px; border-radius: 50%; background: var(--color-background-secondary); display: flex; align-items: center; justify-content: center; }
+.drop-icon svg { width: 20px; height: 20px; stroke: var(--color-text-secondary); fill: none; stroke-width: 1.5; }
+.drop-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+.drop-sub { font-size: 13px; color: var(--color-text-secondary); }
+
+.preview-wrap { position: relative; }
+.preview-wrap img { width: 100%; border-radius: var(--border-radius-md); display: block; max-height: 320px; object-fit: contain; background: var(--color-background-secondary); }
+.clear-btn { position: absolute; top: 8px; right: 8px; background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: 20px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--color-text-secondary); }
+.clear-btn:hover { color: var(--color-text-primary); }
+
+.input-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.input-row label { font-size: 12px; color: var(--color-text-secondary); }
+
+.analyze-btn { width: 100%; padding: 11px; font-size: 14px; font-weight: 500; cursor: pointer; border-radius: var(--border-radius-md); background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); color: var(--color-text-primary); transition: background 0.15s; }
+.analyze-btn:hover { background: var(--color-background-secondary); }
+.analyze-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.result-area { display: flex; flex-direction: column; gap: 12px; }
+
+.status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+.stat-lbl { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 4px; }
+.stat-val { font-size: 14px; font-weight: 500; }
+
+.bull-txt { color: #3B6D11; }
+.bear-txt { color: #A32D2D; }
+.warn-txt { color: #854F0B; }
+.neutral-txt { color: var(--color-text-secondary); }
+
+.decision-banner { border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; border: 0.5px solid var(--color-border-tertiary); }
+.decision-banner.buy { background: #EAF3DE; border-color: #97C459; }
+.decision-banner.sell { background: #FCEBEB; border-color: #F09595; }
+.decision-banner.wait { background: #FAEEDA; border-color: #FAC775; }
+.decision-banner.skip { background: #F1EFE8; }
+.d-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-tertiary); margin-bottom: 4px; }
+.d-value { font-size: 26px; font-weight: 500; }
+.d-value.buy { color: #3B6D11; }
+.d-value.sell { color: #A32D2D; }
+.d-value.wait { color: #854F0B; }
+.d-sub { font-size: 13px; color: var(--color-text-secondary); margin-top: 6px; }
+
+.checklist { display: flex; flex-direction: column; gap: 7px; }
+.check-item { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; }
+.check-icon { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; font-weight: 500; margin-top: 1px; }
+.cp { background: #EAF3DE; color: #3B6D11; }
+.cf { background: #FCEBEB; color: #A32D2D; }
+.cw { background: #FAEEDA; color: #854F0B; }
+.cn { background: #F1EFE8; color: #888780; }
+.check-main { color: var(--color-text-primary); }
+.check-note { font-size: 12px; color: var(--color-text-secondary); }
+
+.trade-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.trade-table td { padding: 7px 0; border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-primary); }
+.trade-table td:first-child { color: var(--color-text-secondary); width: 45%; }
+.trade-table td:last-child { font-weight: 500; text-align: right; }
+.trade-table tr:last-child td { border-bottom: none; }
+
+.loading { display: flex; align-items: center; gap: 10px; padding: 1rem; color: var(--color-text-secondary); font-size: 14px; }
+.spinner { width: 18px; height: 18px; border: 2px solid var(--color-border-tertiary); border-top-color: var(--color-text-secondary); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.stars { display: flex; gap: 3px; margin-top: 8px; }
+.son { color: #EF9F27; font-size: 18px; }
+.sof { color: var(--color-border-secondary); font-size: 18px; }
+
+.tip { font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5; padding: 8px 12px; background: var(--color-background-secondary); border-radius: var(--border-radius-md); }
+.tip strong { color: var(--color-text-secondary); font-weight: 500; }
+</style>
+
+<div class="wrap">
+
+  <div class="card">
+    <div class="card-title">Chart screenshot analyzer</div>
+
+    <div id="drop-area">
+      <div class="drop-zone" id="dz">
+        <input type="file" accept="image/*" id="file-input" />
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="drop-title">Drop your TradingView screenshot here</div>
+        <div class="drop-sub">or click to browse — PNG, JPG supported</div>
+      </div>
+    </div>
+
+    <div id="preview-area" style="display:none; margin-top: 12px;">
+      <div class="preview-wrap">
+        <img id="preview-img" src="" alt="chart preview" />
+        <button class="clear-btn" onclick="clearImage()">✕ Remove</button>
+      </div>
+    </div>
+
+    <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div class="input-row">
+        <label>Asset (optional — helps if not visible in screenshot)</label>
+        <input type="text" id="asset-inp" placeholder="e.g. XAUUSD" />
+      </div>
+      <div class="input-row">
+        <label>Any extra context for Claude</label>
+        <input type="text" id="context-inp" placeholder="e.g. just broke NY first candle high" />
+      </div>
+    </div>
+
+    <button class="analyze-btn" id="analyze-btn" onclick="runAnalysis()" style="margin-top: 12px;" disabled>
+      Upload a screenshot to analyze
+    </button>
+  </div>
+
+  <div class="tip">
+    <strong>For best results, make sure your screenshot shows:</strong>
+    the dashboard table (top right) · the EMA lines · VWAP line · any BUY/SELL labels · first candle H/L lines · any FVG boxes near price
+  </div>
+
+  <div id="result-section" style="display:none;">
+    <div id="loading-indicator" class="loading" style="display:none;">
+      <div class="spinner"></div>
+      <span id="loading-text">Reading your chart...</span>
+    </div>
+
+    <div id="results-content" style="display:none;">
+
+      <div class="card">
+        <div class="card-title">Dashboard readings</div>
+        <div class="status-grid" id="status-grid"></div>
+      </div>
+
+      <div class="decision-banner" id="decision-banner" style="margin-top: 0;">
+        <div class="d-label">Signal decision</div>
+        <div class="d-value" id="d-val">—</div>
+        <div class="stars" id="d-stars"></div>
+        <div class="d-sub" id="d-sub"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Confirmation checklist</div>
+        <div class="checklist" id="checklist"></div>
+      </div>
+
+      <div class="card" id="trade-card">
+        <div class="card-title">Trade parameters</div>
+        <table class="trade-table" id="trade-table"></table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Claude's full analysis</div>
+        <div id="full-analysis" style="font-size: 13px; color: var(--color-text-primary); line-height: 1.7; white-space: pre-wrap;"></div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+let imageBase64 = null;
+
+const fileInput = document.getElementById('file-input');
+const dz = document.getElementById('dz');
+
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) loadImage(e.target.files[0]);
+});
+
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]);
+});
+
+function loadImage(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    imageBase64 = ev.target.result.split(',')[1];
+    document.getElementById('preview-img').src = ev.target.result;
+    document.getElementById('drop-area').style.display = 'none';
+    document.getElementById('preview-area').style.display = 'block';
+    const btn = document.getElementById('analyze-btn');
+    btn.disabled = false;
+    btn.textContent = 'Analyze chart screenshot ↗';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearImage() {
+  imageBase64 = null;
+  document.getElementById('preview-img').src = '';
+  document.getElementById('drop-area').style.display = 'block';
+  document.getElementById('preview-area').style.display = 'none';
+  document.getElementById('file-input').value = '';
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.textContent = 'Upload a screenshot to analyze';
+  document.getElementById('result-section').style.display = 'none';
+  document.getElementById('results-content').style.display = 'none';
+  document.getElementById('loading-indicator').style.display = 'none';
+}
+
+async function runAnalysis() {
+  if (!imageBase64) return;
+
+  const asset = document.getElementById('asset-inp').value || '';
+  const ctx = document.getElementById('context-inp').value || '';
+
+  document.getElementById('result-section').style.display = 'flex';
+  document.getElementById('result-section').style.flexDirection = 'column';
+  document.getElementById('result-section').style.gap = '12px';
+  document.getElementById('loading-indicator').style.display = 'flex';
+  document.getElementById('results-content').style.display = 'none';
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('analyze-btn').textContent = 'Analyzing...';
+
+  const loadingMsgs = ['Reading your chart...', 'Parsing the dashboard table...', 'Checking EMA alignment...', 'Evaluating VWAP stretch...', 'Running signal checklist...'];
+  let msgIdx = 0;
+  const loadingInterval = setInterval(() => {
+    msgIdx = (msgIdx + 1) % loadingMsgs.length;
+    document.getElementById('loading-text').textContent = loadingMsgs[msgIdx];
+  }, 1800);
+
+  const systemPrompt = `You are an expert trading assistant analyzing a TradingView chart screenshot. The chart uses the "EMA 9/21/50 + VWAP Bands + MACD + RSI + First Candle H/L + FVG" indicator.
+
+Read the chart carefully and extract ALL of the following, then respond ONLY with a valid JSON object (no markdown, no backticks, no extra text):
+
+{
+  "signal": "BUY" | "SELL" | "NONE",
+  "asset": "string (from chart title or user input)",
+  "timeframe": "string",
+  "trend": "BULLISH" | "BEARISH" | "NEUTRAL",
+  "ema_alignment": "BULL" | "BEAR" | "MIXED",
+  "ema_detail": "string (e.g. EMA9 > EMA21 > EMA50)",
+  "macd": "BULL" | "BEAR" | "NEUTRAL" | "OFF",
+  "rsi": number,
+  "rsi_status": "OVERBOUGHT" | "OVERSOLD" | "NORMAL",
+  "vwap_position": "ABOVE" | "BELOW" | "AT",
+  "vwap_stretch": 0 | 1 | 2 | 3,
+  "vwap_stretch_label": "Inside Range" | "Stretched 1σ" | "Stretched 2σ" | "Stretched 3σ",
+  "first_candle_high": number | null,
+  "first_candle_low": number | null,
+  "current_price": number | null,
+  "fc_context": "Above FC High" | "Between FC H/L" | "Below FC Low" | "N/A",
+  "fvg_nearby": "Bullish FVG below price" | "Price in bullish FVG" | "Bearish FVG above price" | "Price in bearish FVG" | "None visible",
+  "htf_bias": "ALIGNED" | "OPPOSED" | "OFF",
+  "checks": [
+    {"label": "string", "status": "pass" | "fail" | "warn" | "na", "note": "string"}
+  ],
+  "decision": "ENTER LONG" | "ENTER SHORT" | "WAIT" | "SKIP",
+  "decision_class": "buy" | "sell" | "wait" | "skip",
+  "stars": 1 | 2 | 3,
+  "decision_reason": "string (1-2 sentences)",
+  "entry": number | null,
+  "stop_loss": number | null,
+  "stop_reason": "string",
+  "tp1": number | null,
+  "tp2": number | null,
+  "risk_pts": number | null,
+  "full_analysis": "string (3-5 sentences of narrative analysis)"
+}
+
+Checks array should cover: EMA alignment, trend, VWAP side, RSI midline, VWAP stretch, MACD filter, HTF bias, FVG context, first candle context.
+Decision logic: SKIP if trend/EMA/VWAP misaligned or VWAP stretch >= 2σ or HTF opposed. WAIT if RSI extreme or stretch 1σ. ENTER if all clear.
+Stars: 3 = all aligned + inside range + RSI clean. 2 = minor warnings. 1 = borderline.`;
+
+  const userMsg = `Analyze this TradingView chart screenshot.${asset ? ' Asset: ' + asset + '.' : ''}${ctx ? ' Additional context: ' + ctx : ''}`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+            { type: 'text', text: userMsg }
+          ]
+        }]
+      })
+    });
+
+    clearInterval(loadingInterval);
+    const data = await resp.json();
+    const raw = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const r = JSON.parse(clean);
+
+    renderResults(r);
+
+  } catch (err) {
+    clearInterval(loadingInterval);
+    document.getElementById('loading-indicator').style.display = 'none';
+    document.getElementById('full-analysis').textContent = 'Error analyzing chart: ' + err.message;
+    document.getElementById('results-content').style.display = 'block';
+    document.getElementById('trade-card').style.display = 'none';
+  } finally {
+    document.getElementById('analyze-btn').disabled = false;
+    document.getElementById('analyze-btn').textContent = 'Analyze chart screenshot ↗';
+    document.getElementById('loading-indicator').style.display = 'none';
+  }
+}
+
+function renderResults(r) {
+  const sg = document.getElementById('status-grid');
+  const stats = [
+    { lbl: 'Signal', val: r.signal, cls: r.signal === 'BUY' ? 'bull-txt' : r.signal === 'SELL' ? 'bear-txt' : 'neutral-txt' },
+    { lbl: 'Trend', val: r.trend, cls: r.trend === 'BULLISH' ? 'bull-txt' : r.trend === 'BEARISH' ? 'bear-txt' : 'neutral-txt' },
+    { lbl: 'EMA', val: r.ema_detail || r.ema_alignment, cls: r.ema_alignment === 'BULL' ? 'bull-txt' : r.ema_alignment === 'BEAR' ? 'bear-txt' : 'warn-txt' },
+    { lbl: 'MACD', val: r.macd, cls: r.macd === 'BULL' ? 'bull-txt' : r.macd === 'BEAR' ? 'bear-txt' : 'neutral-txt' },
+    { lbl: 'RSI', val: r.rsi + (r.rsi_status !== 'NORMAL' ? ' (' + (r.rsi_status === 'OVERBOUGHT' ? 'OB' : 'OS') + ')' : ''), cls: r.rsi_status === 'OVERBOUGHT' ? 'bear-txt' : r.rsi_status === 'OVERSOLD' ? 'bull-txt' : 'neutral-txt' },
+    { lbl: 'VWAP', val: r.vwap_position + ' | ' + r.vwap_stretch_label, cls: r.vwap_stretch >= 2 ? 'warn-txt' : r.vwap_position === 'ABOVE' ? 'bull-txt' : 'bear-txt' }
+  ];
+  sg.innerHTML = stats.map(s => `<div class="stat-card"><div class="stat-lbl">${s.lbl}</div><div class="stat-val ${s.cls}">${s.val}</div></div>`).join('');
+
+  const db = document.getElementById('decision-banner');
+  db.className = 'decision-banner ' + (r.decision_class || 'skip');
+  document.getElementById('d-val').textContent = r.decision;
+  document.getElementById('d-val').className = 'd-value ' + (r.decision_class || 'skip');
+  document.getElementById('d-sub').textContent = r.decision_reason;
+  const stars = r.stars || 1;
+  document.getElementById('d-stars').innerHTML = [1,2,3].map(i => `<span class="${i <= stars ? 'son' : 'sof'}">★</span>`).join('');
+
+  const iconMap = { pass: '✓', fail: '✗', warn: '!', na: '—' };
+  const clsMap = { pass: 'cp', fail: 'cf', warn: 'cw', na: 'cn' };
+  document.getElementById('checklist').innerHTML = (r.checks || []).map(c => `
+    <div class="check-item">
+      <div class="check-icon ${clsMap[c.status]}">${iconMap[c.status]}</div>
+      <div><div class="check-main">${c.label}</div><div class="check-note">${c.note}</div></div>
+    </div>`).join('');
+
+  const tc = document.getElementById('trade-card');
+  if (r.entry && r.stop_loss && r.decision !== 'SKIP') {
+    tc.style.display = 'block';
+    document.getElementById('trade-table').innerHTML = [
+      ['Asset / TF', (r.asset || '') + ' ' + (r.timeframe || '')],
+      ['Direction', r.decision],
+      ['Entry zone', r.entry ? r.entry.toFixed(2) : '—'],
+      ['Stop loss', r.stop_loss ? r.stop_loss.toFixed(2) : '—'],
+      ['Stop reason', r.stop_reason || '—'],
+      ['Risk (pts)', r.risk_pts ? r.risk_pts.toFixed(2) : '—'],
+      ['TP1 (1.5R)', r.tp1 ? r.tp1.toFixed(2) : '—'],
+      ['TP2 (2.5R)', r.tp2 ? r.tp2.toFixed(2) : '—'],
+      ['Max risk', '1–2% of account']
+    ].map(([l,v]) => `<tr><td>${l}</td><td>${v}</td></tr>`).join('');
+  } else {
+    tc.style.display = 'none';
+  }
+
+  document.getElementById('full-analysis').textContent = r.full_analysis || '';
+  document.getElementById('results-content').style.display = 'flex';
+  document.getElementById('results-content').style.flexDirection = 'column';
+  document.getElementById('results-content').style.gap = '12px';
+}
+</script>
