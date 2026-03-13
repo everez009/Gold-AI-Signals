@@ -616,7 +616,7 @@ function buildLearningContext(trades, asset) {
   const pool = relevant.length >= 3 ? relevant : completed;
 
   const total = pool.length;
-  const wins = pool.filter(t => t.outcome === 'TP1' || t.outcome === 'TP2').length;
+  const wins = pool.filter(t => t.outcome && t.outcome.includes('TP')).length;
   const winRate = Math.round(wins / total * 100);
 
   const byStretch = {};
@@ -624,7 +624,7 @@ function buildLearningContext(trades, asset) {
     const k = t.vwap_stretch_label || 'Unknown';
     if (!byStretch[k]) byStretch[k] = {w:0,t:0};
     byStretch[k].t++;
-    if (t.outcome==='TP1'||t.outcome==='TP2') byStretch[k].w++;
+    if (t.outcome&&(t.outcome.includes('TP'))) byStretch[k].w++;
   });
 
   const bySession = {};
@@ -632,7 +632,7 @@ function buildLearningContext(trades, asset) {
     if (!t.session) return;
     if (!bySession[t.session]) bySession[t.session] = {w:0,t:0};
     bySession[t.session].t++;
-    if (t.outcome==='TP1'||t.outcome==='TP2') bySession[t.session].w++;
+    if (t.outcome&&(t.outcome.includes('TP'))) bySession[t.session].w++;
   });
 
   const bySig = {};
@@ -640,7 +640,7 @@ function buildLearningContext(trades, asset) {
     if (!t.signal) return;
     if (!bySig[t.signal]) bySig[t.signal] = {w:0,t:0};
     bySig[t.signal].t++;
-    if (t.outcome==='TP1'||t.outcome==='TP2') bySig[t.signal].w++;
+    if (t.outcome&&(t.outcome.includes('TP'))) bySig[t.signal].w++;
   });
 
   let ctx = `Overall: ${total} completed trades, ${winRate}% win rate.\n`;
@@ -680,17 +680,18 @@ function renderResults(r, tradeId) {
   const outcomeHtml = tradeId ? `
     <div class="card">
       <div class="card-title">Mark Outcome</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Update once trade closes — this trains the learning model</div>
-      <div class="outcome-group" id="outcome-group-${tradeId}">
-        <button class="outcome-btn tp1" onclick="markOutcome('${tradeId}','TP1',this)">✓ TP1 Hit</button>
-        <button class="outcome-btn tp2" onclick="markOutcome('${tradeId}','TP2',this)">✓✓ TP2 Hit</button>
-        <button class="outcome-btn sl" onclick="markOutcome('${tradeId}','Stopped out',this)">✗ Stopped Out</button>
-        <button class="outcome-btn partial" onclick="markOutcome('${tradeId}','Partial',this)">~ Partial</button>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Select all that apply — this trains the learning model</div>
+      <div class="outcome-group" id="outcome-group-${tradeId}" style="margin-bottom:10px">
+        <button class="outcome-btn" id="ob-tp1-${tradeId}" onclick="toggleOutcome('${tradeId}','TP1',this)">✓ TP1</button>
+        <button class="outcome-btn" id="ob-tp2-${tradeId}" onclick="toggleOutcome('${tradeId}','TP2',this)">✓✓ TP2</button>
+        <button class="outcome-btn" id="ob-sl-${tradeId}" onclick="toggleOutcome('${tradeId}','Stopped out',this)">✗ Stopped Out</button>
+        <button class="outcome-btn" id="ob-partial-${tradeId}" onclick="toggleOutcome('${tradeId}','Partial',this)">~ Partial</button>
       </div>
-      <div style="margin-top:10px;display:flex;gap:8px">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
         <input id="outcome-price-${tradeId}" placeholder="Exit price (optional)" style="flex:1">
         <input id="outcome-notes-${tradeId}" placeholder="Notes (optional)" style="flex:2">
       </div>
+      <button class="btn btn-ghost btn-full" id="ob-save-${tradeId}" onclick="saveOutcome('${tradeId}')">Save Outcome</button>
     </div>` : '';
 
   const learningHtml = r.learning_note ? `
@@ -731,17 +732,72 @@ function renderResults(r, tradeId) {
   `;
 }
 
-async function markOutcome(id, outcome, btn) {
+const selectedOutcomes = {};
+
+function toggleOutcome(id, outcome, btn) {
+  if (!selectedOutcomes[id]) selectedOutcomes[id] = new Set();
+  const set = selectedOutcomes[id];
+
+  // SL and Partial are mutually exclusive with TP selections
+  const tpOuts = ['TP1','TP2'];
+  const exclusiveOuts = ['Stopped out','Partial'];
+
+  if (exclusiveOuts.includes(outcome)) {
+    // Clear TP selections if picking SL/Partial
+    tpOuts.forEach(o => {
+      set.delete(o);
+      const ob = document.getElementById('ob-' + o.toLowerCase().replace(' ','-') + '-' + id) ||
+                 document.getElementById('ob-tp1-' + id) || document.getElementById('ob-tp2-' + id);
+    });
+    set.delete('TP1'); set.delete('TP2');
+    document.getElementById('ob-tp1-' + id)?.classList.remove('tp1','tp2','sl','partial');
+    document.getElementById('ob-tp2-' + id)?.classList.remove('tp1','tp2','sl','partial');
+    // Also clear other exclusive
+    exclusiveOuts.filter(o=>o!==outcome).forEach(o => {
+      set.delete(o);
+      const key = o === 'Stopped out' ? 'sl' : 'partial';
+      document.getElementById('ob-' + key + '-' + id)?.classList.remove('tp1','tp2','sl','partial');
+    });
+  }
+
+  if (set.has(outcome)) {
+    set.delete(outcome);
+    const cls = outcome==='TP1'?'tp1':outcome==='TP2'?'tp2':outcome==='Stopped out'?'sl':'partial';
+    btn.classList.remove(cls);
+  } else {
+    set.add(outcome);
+    const cls = outcome==='TP1'?'tp1':outcome==='TP2'?'tp2':outcome==='Stopped out'?'sl':'partial';
+    btn.classList.add(cls);
+  }
+}
+
+async function saveOutcome(id) {
+  const set = selectedOutcomes[id];
+  if (!set || set.size === 0) { alert('Please select at least one outcome'); return; }
+
   const price = parseFloat(document.getElementById('outcome-price-' + id)?.value) || null;
   const notes = document.getElementById('outcome-notes-' + id)?.value || null;
-  btn.textContent = '...';
-  btn.disabled = true;
+
+  // Build outcome string: "TP1 + TP2", "TP1", "Stopped out" etc
+  let outcomeStr;
+  if (set.has('TP2')) outcomeStr = set.has('TP1') ? 'TP1 + TP2' : 'TP2';
+  else if (set.has('TP1')) outcomeStr = 'TP1';
+  else outcomeStr = [...set][0];
+
+  const saveBtn = document.getElementById('ob-save-' + id);
+  saveBtn.textContent = '...';
+  saveBtn.disabled = true;
+
   try {
-    await updateOutcome(id, outcome, price, notes);
-    const group = document.getElementById('outcome-group-' + id);
-    if (group) group.innerHTML = `<span class="badge badge-green">✓ Marked: ${outcome}</span>`;
+    await updateOutcome(id, outcomeStr, price, notes);
+    const card = saveBtn.closest('.card');
+    if (card) {
+      const cls = outcomeStr.includes('TP') ? 'badge-green' : outcomeStr === 'Stopped out' ? 'badge-red' : 'badge-amber';
+      card.innerHTML = `<div class="card-title">Outcome</div><span class="badge ${cls}">✓ ${outcomeStr}</span>${notes ? '<div style="font-size:12px;color:var(--text2);margin-top:8px">'+notes+'</div>' : ''}`;
+    }
   } catch(e) {
-    btn.textContent = 'Error';
+    saveBtn.textContent = 'Error — retry';
+    saveBtn.disabled = false;
     console.error(e);
   }
 }
@@ -765,7 +821,7 @@ function renderJournal(trades) {
   }
   const rows = trades.map(t => {
     const outcome = t.outcome
-      ? `<span class="tag ${t.outcome==='TP2'?'tag-green':t.outcome==='TP1'?'tag-green':t.outcome==='Stopped out'?'tag-red':'tag-amber'}">${t.outcome}</span>`
+      ? `<span class="tag ${t.outcome&&t.outcome.includes('TP')?'tag-green':t.outcome==='Stopped out'?'tag-red':'tag-amber'}">${t.outcome}</span>`
       : `<button class="outcome-btn" style="font-size:10px;padding:3px 8px" onclick="quickOutcome('${t.id}',this)">+ Mark</button>`;
     const pnl = t.pnl_r != null ? `<span style="color:${t.pnl_r>0?'var(--green)':'var(--red)'}">${t.pnl_r>0?'+':''}${t.pnl_r}R</span>` : '—';
     const sig = t.signal === 'BUY' ? '<span class="tag tag-green">BUY</span>' : t.signal === 'SELL' ? '<span class="tag tag-red">SELL</span>' : '—';
@@ -825,7 +881,7 @@ function renderPerformance(trades) {
     return;
   }
 
-  const wins = completed.filter(t => t.outcome==='TP1'||t.outcome==='TP2').length;
+  const wins = completed.filter(t => t.outcome && t.outcome.includes('TP')).length;
   const winRate = Math.round(wins/completed.length*100);
   const pnlR = completed.filter(t=>t.pnl_r!=null).reduce((a,t)=>a+t.pnl_r,0);
   const avgR = completed.filter(t=>t.pnl_r!=null).length ? (pnlR/completed.filter(t=>t.pnl_r!=null).length).toFixed(2) : '—';
