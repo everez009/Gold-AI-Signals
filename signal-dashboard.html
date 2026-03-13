@@ -262,8 +262,23 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0}
 
       <div class="card">
         <div class="card-title">Context (Optional)</div>
-        <div class="grid-2">
+        <div class="grid-3">
           <div class="field"><label>Asset</label><input id="inp-asset" placeholder="e.g. SPX, XAUUSD"></div>
+          <div class="field"><label>Timeframe</label>
+            <select id="inp-tf">
+              <option value="">Auto-detect</option>
+              <option>1m</option>
+              <option>3m</option>
+              <option>5m</option>
+              <option>15m</option>
+              <option>30m</option>
+              <option>1H</option>
+              <option>2H</option>
+              <option>4H</option>
+              <option>D</option>
+              <option>W</option>
+            </select>
+          </div>
           <div class="field"><label>Session</label>
             <select id="inp-session">
               <option value="">Auto-detect</option>
@@ -444,6 +459,7 @@ async function runAnalysis() {
   if (!imageBase64) return;
 
   const asset = document.getElementById('inp-asset').value;
+  const tf = document.getElementById('inp-tf').value;
   const session = document.getElementById('inp-session').value;
   const ctx = document.getElementById('inp-context').value;
 
@@ -502,12 +518,32 @@ Read the chart carefully and respond ONLY with valid JSON (no markdown, no backt
   "tp2": number|null,
   "risk_pts": number|null,
   "full_analysis": "string",
-  "learning_note": "string|null (if historical data was used, note any relevant pattern e.g. your last 8 SELL signals with 1σ stretch hit TP2 in 75% of cases)"
+  "learning_note": "string|null (if historical data was used, note any relevant pattern e.g. your last 8 SELL signals with 1σ stretch hit TP2 in 75% of cases)",
+  "pip_applicable": true|false,
+  "pip_value": number|null,
+  "risk_pips": number|null,
+  "tp1_pips": number|null,
+  "tp2_pips": number|null
 }
 
 Checks: EMA alignment, trend, VWAP side, RSI midline, VWAP stretch, MACD, HTF bias, FVG context, first candle.
 Decision: SKIP=critical fail or 2σ+ stretch or HTF opposed. WAIT=RSI extreme or 1σ stretch. ENTER=all clear.
-Stars: 3=all aligned+inside range+RSI clean. 2=minor warns. 1=borderline.`;
+Stars: 3=all aligned+inside range+RSI clean. 2=minor warns. 1=borderline.
+TP calculation: tp1 = entry ± (risk_pts * 1.0), tp2 = entry ± (risk_pts * 2.0). For longs add, for shorts subtract.
+
+PIP CALCULATION: Include pip values where applicable. Use these rules:
+- Forex pairs (EURUSD, GBPUSD, AUDUSD, NZDUSD, USDCAD, USDCHF, EURGBP etc): 1 pip = 0.0001. risk_pips = risk_pts / 0.0001
+- JPY pairs (USDJPY, EURJPY, GBPJPY etc): 1 pip = 0.01. risk_pips = risk_pts / 0.01
+- Gold XAUUSD: 1 pip = 0.1 (some brokers use 0.01 — use 0.1 as standard). risk_pips = risk_pts / 0.1
+- Indices (SPX, US500, NAS100, DOW, DAX etc): pips not applicable — use points only
+- Crypto (BTCUSD etc): pips not applicable — use points only
+
+Add these fields to the JSON:
+"pip_value": number|null (value of 1 pip for this asset, null if not applicable),
+"risk_pips": number|null (stop distance in pips, null if not applicable),
+"tp1_pips": number|null,
+"tp2_pips": number|null,
+"pip_applicable": true|false`;
 
   try {
     const resp = await fetch(ANTH_URL, {
@@ -519,7 +555,7 @@ Stars: 3=all aligned+inside range+RSI clean. 2=minor warns. 1=borderline.`;
         system: systemPrompt,
         messages:[{role:'user', content:[
           {type:'image', source:{type:'base64', media_type:'image/png', data:imageBase64}},
-          {type:'text', text:`Analyze this chart.${asset?' Asset: '+asset+'.':''}${session?' Session: '+session+'.':''}${ctx?' Context: '+ctx:''}` }
+          {type:'text', text:`Analyze this chart.${asset?' Asset: '+asset+'.':''}${tf?' Timeframe: '+tf+'.':' Detect timeframe from chart.'}${session?' Session: '+session+'.':''}${ctx?' Context: '+ctx:''}` }
         ]}]
       })
     });
@@ -535,7 +571,7 @@ Stars: 3=all aligned+inside range+RSI clean. 2=minor warns. 1=borderline.`;
     try {
       const logged = await insertTrade({
         asset: r.asset || asset || null,
-        timeframe: r.timeframe || null,
+        timeframe: tf || r.timeframe || null,
         signal: r.signal,
         trend: r.trend,
         ema_alignment: r.ema_alignment,
@@ -634,9 +670,9 @@ function renderResults(r, tradeId) {
         ['Direction', r.decision],
         ['Entry', r.entry_price ? r.entry_price.toFixed(2) : '—'],
         ['Stop loss', (r.stop_loss ? r.stop_loss.toFixed(2) : '—') + (r.stop_reason ? ' · '+r.stop_reason : '')],
-        ['Risk (pts)', r.risk_pts ? r.risk_pts.toFixed(2) : '—'],
-        ['TP1 (1.5R)', r.tp1 ? r.tp1.toFixed(2) : '—'],
-        ['TP2 (2.5R)', r.tp2 ? r.tp2.toFixed(2) : '—'],
+        ['Risk (pts)', r.risk_pts ? r.risk_pts.toFixed(2) + (r.pip_applicable && r.risk_pips ? ' · ' + Math.round(r.risk_pips) + ' pips' : '') : '—'],
+        ['TP1 (1R)', r.tp1 ? r.tp1.toFixed(2) + (r.pip_applicable && r.tp1_pips ? ' · ' + Math.round(r.tp1_pips) + ' pips' : '') : '—'],
+        ['TP2 (2R)', r.tp2 ? r.tp2.toFixed(2) + (r.pip_applicable && r.tp2_pips ? ' · ' + Math.round(r.tp2_pips) + ' pips' : '') : '—'],
         ['Max risk', '1–2% of account']
       ].map(([k,v])=>`<div class="trade-row"><span class="trade-key">${k}</span><span class="trade-val">${v}</span></div>`).join('')}
     </div>` : '';
