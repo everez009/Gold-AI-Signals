@@ -340,18 +340,27 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:16px 0}
 <script>
 const SUPA_URL = 'https://klkedtjbtbjnwvmcxoih.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtsa2VkdGpidGJqbnd2bWN4b2loIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MDgzNjAsImV4cCI6MjA4ODk4NDM2MH0.6NFT-ufCYgdulSqKFSTsqEWbtxI5RTAh7IDvPr9bTcQ';
-const ANTH_URL = 'https://api.anthropic.com/v1/messages';
+const ANTH_URL = 'https://sparkling-dawn-9030.realedesigns.workers.dev';
 
 let imageBase64 = null;
 let lastAnalysis = null;
 
 // ── SUPABASE HELPERS ──────────────────────────────
 async function sbFetch(path, opts={}) {
+  const isPatch = opts.method === 'PATCH';
+  const {headers: extraHeaders, ...restOpts} = opts;
   const res = await fetch(SUPA_URL + '/rest/v1/' + path, {
-    headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=representation', ...opts.headers },
-    ...opts
+    ...restOpts,
+    headers: {
+      'apikey': SUPA_KEY,
+      'Authorization': 'Bearer ' + SUPA_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': isPatch ? 'return=minimal' : 'return=representation',
+      ...(extraHeaders || {})
+    }
   });
   if (!res.ok) throw new Error(await res.text());
+  if (isPatch) return true;
   const txt = await res.text();
   return txt ? JSON.parse(txt) : [];
 }
@@ -375,7 +384,6 @@ async function updateOutcome(id, outcome, outcomePrice, notes) {
   const pnlR = outcomePrice && lastAnalysis ? calcPnlR(outcome, outcomePrice) : null;
   return sbFetch('trade_journal?id=eq.' + id, {
     method: 'PATCH',
-    headers: { 'Prefer': 'return=minimal' },
     body: JSON.stringify({ outcome, outcome_price: outcomePrice || null, notes: notes || null, pnl_r: pnlR })
   });
 }
@@ -413,6 +421,11 @@ function loadImg(file) {
     document.getElementById('analyze-btn-text').textContent = 'Analyze Chart ↗';
   };
   reader.readAsDataURL(file);
+}
+
+function resetForNext() {
+  clearImg();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function clearImg() {
@@ -553,6 +566,9 @@ Stars: 3=all aligned+inside range+RSI clean. 2=minor warns. 1=borderline.`;
   } finally {
     document.getElementById('analyze-btn').disabled = false;
     document.getElementById('analyze-btn-text').textContent = 'Analyze Chart ↗';
+    // Show the remove button hint
+    const clearBtn = document.querySelector('.img-clear');
+    if (clearBtn) { clearBtn.textContent = '↑ New Chart'; clearBtn.style.background = 'var(--green3)'; clearBtn.style.color = 'var(--green)'; clearBtn.style.borderColor = 'var(--green2)'; }
   }
 }
 
@@ -674,7 +690,8 @@ function renderResults(r, tradeId) {
       <div class="card-title">Full Analysis</div>
       <div class="analysis-text">${r.full_analysis||''}</div>
     </div>
-    ${tradeId ? `<div style="font-size:11px;color:var(--text3);text-align:center;font-family:var(--mono)">Trade logged · ID: ${tradeId.slice(0,8)}...</div>` : ''}
+    ${tradeId ? `<div style="font-size:11px;color:var(--text3);text-align:center;font-family:var(--mono);margin-bottom:8px">Trade logged · ID: ${tradeId.slice(0,8)}...</div>` : ''}
+    <button class="btn btn-ghost btn-full" onclick="resetForNext()" style="margin-top:4px">↑ Analyze Next Chart</button>
   `;
 }
 
