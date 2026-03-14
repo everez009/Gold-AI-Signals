@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PA Signal Engine · Vision</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#090c10; --surface:#0e1318; --surface2:#131a22; --surface3:#1a2433;
+  --border:#1e2d3d; --border2:#253040;
+  --gold:#f5c842; --gold2:#e8a020; --gold-dim:rgba(245,200,66,0.12);
+  --green:#00e676; --green-dim:rgba(0,230,118,0.10);
+  --red:#ff3d57; --red-dim:rgba(255,61,87,0.10);
+  --blue:#29b6f6; --blue-dim:rgba(41,182,246,0.10);
+  --yellow:#ffeb3b;
+  --text:#cfd8e3; --text-dim:#546e7a; --text-bright:#eceff1;
+  --mono:'Share Tech Mono',monospace;
+  --display:'Bebas Neue',sans-serif;
+  --body:'Rajdhani',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:14px;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:1000;}
+.grid-bg{position:fixed;inset:0;background-image:linear-gradient(rgba(245,200,66,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(245,200,66,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;}
+.container{max-width:1400px;margin:0 auto;padding:20px;position:relative;}
+
+/* ── HEADER ── */
+header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:20px;}
+.logo-block{display:flex;align-items:center;gap:14px;}
+.logo-icon{width:44px;height:44px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:20px;color:#000;box-shadow:0 0 20px rgba(245,200,66,0.3);}
+.logo-text h1{font-family:var(--display);font-size:26px;letter-spacing:4px;color:var(--gold);line-height:1;}
+.logo-text span{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;}
+.header-meta{display:flex;align-items:center;gap:20px;}
+.live-badge{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:1px;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.4s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
+#clock{font-family:var(--mono);font-size:12px;color:var(--text-dim);letter-spacing:1px;}
+
+/* ── MAIN GRID ── */
+.main-grid{display:grid;grid-template-columns:420px 1fr 290px;gap:16px;align-items:start;}
+@media(max-width:1200px){.main-grid{grid-template-columns:400px 1fr;}.sidebar{display:none;}}
+@media(max-width:800px){.main-grid{grid-template-columns:1fr;}}
+
+/* ── CARD ── */
+.card{background:var(--surface);border:1px solid var(--border);padding:16px;margin-bottom:16px;}
+.card:last-child{margin-bottom:0;}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.card-title{font-family:var(--display);font-size:16px;letter-spacing:2px;color:var(--gold);}
+.card-badge{font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:2px 8px;border-radius:1px;text-transform:uppercase;}
+.badge-green{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,230,118,0.3);}
+.badge-red{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,61,87,0.3);}
+.badge-gold{background:var(--gold-dim);color:var(--gold);border:1px solid rgba(245,200,66,0.3);}
+.badge-blue{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(41,182,246,0.3);}
+.badge-dim{background:rgba(84,110,122,0.1);color:var(--text-dim);border:1px solid rgba(84,110,122,0.2);}
+
+/* ── UPLOAD ZONES ── */
+.upload-pair{display:flex;flex-direction:column;gap:10px;}
+.upload-zone{border:2px dashed var(--border);background:var(--surface2);cursor:pointer;transition:all 0.2s;position:relative;min-height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:16px;}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--gold);background:var(--gold-dim);box-shadow:0 0 20px rgba(245,200,66,0.1);}
+.upload-zone.has-image{border-style:solid;border-color:var(--gold);padding:0;overflow:hidden;min-height:150px;cursor:default;}
+.upload-zone.has-image:hover{box-shadow:none;}
+.upload-zone .preview-img{width:100%;max-height:180px;object-fit:contain;display:none;background:#000;}
+.upload-zone .clear-btn{position:absolute;top:6px;right:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:9px;padding:3px 8px;cursor:pointer;border-radius:2px;letter-spacing:1px;transition:all 0.15s;display:none;z-index:10;}
+.upload-zone .clear-btn:hover{border-color:var(--red);color:var(--red);}
+.upload-zone .placeholder{display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;}
+.upload-zone .ph-icon{font-size:24px;opacity:0.4;}
+.upload-zone .ph-title{font-family:var(--display);font-size:16px;letter-spacing:2px;color:var(--text-bright);}
+.upload-zone .ph-sub{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;line-height:1.8;text-transform:uppercase;}
+.upload-zone .ph-badge{font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:1px;border:1px solid;letter-spacing:1px;margin-top:2px;}
+.htf-badge{border-color:rgba(41,182,246,0.4);color:var(--blue);background:var(--blue-dim);}
+.ltf-badge{border-color:rgba(245,200,66,0.4);color:var(--gold);background:var(--gold-dim);}
+
+/* ── CONTEXT FIELDS ── */
+.ctx-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+.ctx-grid.three{grid-template-columns:1fr 1fr 1fr;}
+.ctx-full{grid-column:1/-1;}
+.ctx-label{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;}
+.ctx-select,.ctx-input{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:7px 9px;outline:none;cursor:pointer;border-radius:2px;appearance:none;-webkit-appearance:none;transition:border-color 0.2s;width:100%;}
+.ctx-select:focus,.ctx-input:focus{border-color:var(--gold);}
+.ctx-select option{background:#0e1318;}
+
+/* ── ANALYZE BUTTON ── */
+.analyze-btn{width:100%;margin-top:12px;padding:13px;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-family:var(--display);font-size:19px;letter-spacing:4px;cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;}
+.analyze-btn::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(245,200,66,0.1),transparent);transform:translateX(-100%);transition:transform 0.5s;}
+.analyze-btn:hover::before{transform:translateX(100%);}
+.analyze-btn:hover{background:rgba(245,200,66,0.2);box-shadow:0 0 20px rgba(245,200,66,0.15);}
+.analyze-btn:disabled{opacity:0.4;cursor:not-allowed;}
+.analyze-btn.loading{animation:ablink 0.9s ease-in-out infinite;}
+@keyframes ablink{0%,100%{opacity:1}50%{opacity:0.55}}
+.prog-wrap{display:none;margin-top:8px;}
+.prog-track{height:2px;background:var(--border);border-radius:1px;overflow:hidden;}
+.prog-fill{height:100%;width:0%;background:var(--gold);border-radius:1px;transition:width 0.4s ease;box-shadow:0 0 6px rgba(245,200,66,0.5);}
+.prog-label{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;text-align:center;margin-top:5px;}
+
+/* ── VERDICT ── */
+.verdict-box{border:1px solid var(--border);padding:18px;text-align:center;position:relative;overflow:hidden;margin-bottom:16px;}
+.verdict-box.bull{border-color:var(--green);background:var(--green-dim);box-shadow:0 0 30px rgba(0,230,118,0.08);}
+.verdict-box.bear{border-color:var(--red);background:var(--red-dim);box-shadow:0 0 30px rgba(255,61,87,0.08);}
+.verdict-box.wait{border-color:var(--yellow);background:rgba(255,235,59,0.06);}
+.verdict-box.skip{border-color:var(--text-dim);}
+.verdict-box.idle{border-color:var(--border);}
+.verdict-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:6px;}
+.verdict-main{font-family:var(--display);font-size:42px;letter-spacing:4px;line-height:1;}
+.verdict-main.bull{color:var(--green);} .verdict-main.bear{color:var(--red);}
+.verdict-main.warn{color:var(--yellow);} .verdict-main.neutral{color:var(--text-dim);}
+.verdict-stars{font-size:22px;margin-top:6px;}
+.verdict-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:6px;line-height:1.6;letter-spacing:0.5px;}
+
+/* ── PA PHASES ── */
+.phase-list{display:flex;flex-direction:column;gap:6px;}
+.phase-row{display:flex;gap:10px;padding:9px 12px;border:1px solid var(--border);background:var(--surface2);border-radius:2px;transition:border-color 0.2s;}
+.phase-row.pass{border-left:3px solid var(--green);background:rgba(0,230,118,0.03);}
+.phase-row.warn{border-left:3px solid var(--yellow);background:rgba(255,235,59,0.03);}
+.phase-row.fail{border-left:3px solid var(--red);background:rgba(255,61,87,0.03);}
+.phase-row.na{opacity:0.45;}
+.phase-icon{font-size:13px;flex-shrink:0;margin-top:1px;}
+.phase-text{font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.4;}
+.phase-sub{display:block;font-size:9px;color:var(--text-dim);margin-top:3px;letter-spacing:0.5px;line-height:1.5;}
+
+/* ── CONVICTION METER ── */
+.conviction-wrap{margin:12px 0 6px;}
+.conviction-track{height:8px;background:var(--border);border-radius:4px;overflow:hidden;position:relative;}
+.conviction-fill{height:100%;border-radius:4px;transition:width 0.6s ease;background:linear-gradient(90deg,var(--red) 0%,var(--yellow) 40%,var(--green) 75%,#00ffaa 100%);}
+.conviction-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--text-dim);margin-top:3px;}
+
+/* ── TRADE PLAN ── */
+.plan-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);}
+.plan-row:last-child{border-bottom:none;}
+.plan-label{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;}
+.plan-val{font-family:var(--mono);font-size:14px;font-weight:700;}
+.val-entry{color:var(--gold);} .val-sl{color:var(--red);}
+.val-tp1{color:var(--green);} .val-tp2{color:#69f0ae;}
+.val-blue{color:var(--blue);}
+
+/* ── AI PANEL ── */
+.ai-panel{border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-top:12px;}
+.ai-panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);}
+.ai-panel-title{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--blue);}
+.ai-badge{font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:3px 8px;border-radius:2px;border:1px solid;}
+.ai-badge.loading{color:var(--text-dim);border-color:var(--border);animation:pulse 1.4s infinite;}
+.ai-badge.confirms{color:var(--green);border-color:var(--green);background:var(--green-dim);}
+.ai-badge.caution{color:var(--yellow);border-color:var(--yellow);background:rgba(255,235,59,0.08);}
+.ai-badge.conflicts{color:var(--red);border-color:var(--red);background:var(--red-dim);}
+.ai-panel-body{padding:10px 12px;font-family:var(--mono);font-size:10px;line-height:1.75;color:var(--text);background:var(--surface);}
+.ai-pattern-tag{display:inline-block;background:var(--blue-dim);border:1px solid var(--blue);color:var(--blue);font-size:9px;padding:2px 7px;border-radius:2px;margin-bottom:7px;letter-spacing:1px;}
+.ai-split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);}
+.ai-col-label{font-size:9px;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;}
+.ai-col-val{font-size:11px;line-height:1.5;}
+.ai-risk{margin-top:8px;padding:7px 10px;background:var(--surface2);border-left:2px solid var(--gold);font-size:10px;color:var(--text-dim);}
+.save-btn{width:100%;margin-top:10px;padding:9px;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer;border-radius:2px;transition:all 0.2s;}
+.save-btn:hover{background:rgba(245,200,66,0.25);}
+.save-btn:disabled{opacity:0.4;cursor:not-allowed;}
+
+/* ── ACCURACY TIPS (sidebar) ── */
+.tip-row{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;line-height:1.5;}
+.tip-row:last-child{border-bottom:none;}
+.tip-icon{flex-shrink:0;font-size:12px;}
+.tip-text{color:var(--text-dim);}
+.tip-text strong{color:var(--text);}
+
+/* ── JOURNAL (sidebar snapshot) ── */
+.journal-entry{border:1px solid var(--border);border-radius:3px;margin-bottom:8px;overflow:hidden;}
+.j-header{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--surface2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;}
+.j-body{padding:8px 10px;font-family:var(--mono);font-size:10px;line-height:1.7;color:var(--text-dim);}
+.dir-long{color:var(--green);font-weight:700;}
+.dir-short{color:var(--red);font-weight:700;}
+.outcome-btns{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;}
+.out-btn{flex:1;min-width:55px;padding:4px 6px;font-family:var(--mono);font-size:9px;letter-spacing:0.5px;cursor:pointer;border-radius:2px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);transition:all 0.15s;}
+.out-btn:hover{border-color:var(--gold);color:var(--gold);}
+.out-btn.win{background:var(--green-dim);border-color:var(--green);color:var(--green);}
+.out-btn.loss{background:var(--red-dim);border-color:var(--red);color:var(--red);}
+.out-btn.be{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);}
+.journal-empty{text-align:center;font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:24px 0;letter-spacing:1px;}
+.wr-bar-wrap{height:5px;background:var(--border);border-radius:3px;margin:5px 0 2px;overflow:hidden;}
+.wr-bar-fill{height:100%;border-radius:3px;transition:width 0.4s ease;}
+
+/* ── FULL JOURNAL TAB ── */
+.tab-bar{display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border);}
+.tab-btn{font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;padding:8px 20px;cursor:pointer;border:none;background:transparent;color:var(--text-dim);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.2s;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--gold);border-bottom-color:var(--gold);}
+.tab-panel{display:none;} .tab-panel.active{display:block;}
+
+/* ── PERFORMANCE ── */
+.perf-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+@media(max-width:700px){.perf-grid{grid-template-columns:repeat(2,1fr);}}
+.perf-card{background:var(--surface);border:1px solid var(--border);padding:14px;}
+.perf-label{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;}
+.perf-val{font-family:var(--display);font-size:28px;color:var(--text-bright);}
+.perf-val.pos{color:var(--green);} .perf-val.neg{color:var(--red);}
+.perf-sub{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:3px;}
+.bar-chart{display:flex;flex-direction:column;gap:8px;}
+.bar-row{display:grid;grid-template-columns:130px 1fr 44px;align-items:center;gap:8px;}
+.bar-lbl{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:0.5px;}
+.bar-track{height:7px;background:var(--border);border-radius:2px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:2px;background:var(--gold);transition:width 0.5s;}
+.bar-fill.g{background:var(--green);} .bar-fill.r{background:var(--red);}
+.bar-pct{font-family:var(--mono);font-size:10px;color:var(--text-dim);text-align:right;}
+
+/* ── INSIGHTS ── */
+.insight-card{border:1px solid var(--border);padding:14px;margin-bottom:10px;display:flex;gap:12px;}
+.insight-card.EDGE{border-left:3px solid var(--green);background:rgba(0,230,118,0.03);}
+.insight-card.WARNING{border-left:3px solid var(--red);background:rgba(255,61,87,0.03);}
+.insight-card.PATTERN{border-left:3px solid var(--blue);background:rgba(41,182,246,0.03);}
+.insight-card.TIP{border-left:3px solid var(--gold);background:rgba(245,200,66,0.03);}
+.insight-tag{font-family:var(--mono);font-size:8px;letter-spacing:1.5px;flex-shrink:0;width:58px;padding:3px 0;text-align:center;border-radius:2px;height:fit-content;margin-top:1px;}
+.EDGE .insight-tag{background:var(--green-dim);color:var(--green);}
+.WARNING .insight-tag{background:var(--red-dim);color:var(--red);}
+.PATTERN .insight-tag{background:var(--blue-dim);color:var(--blue);}
+.TIP .insight-tag{background:var(--gold-dim);color:var(--gold);}
+.insight-body{font-family:var(--body);font-size:13px;color:var(--text);line-height:1.5;}
+
+/* ── MISC ── */
+.api-error{background:transparent;border:1px solid var(--gold);padding:10px 16px;font-family:var(--mono);font-size:11px;color:var(--gold);margin-bottom:16px;display:none;letter-spacing:1px;}
+footer{margin-top:24px;padding-top:12px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--text-dim);text-align:center;line-height:1.6;letter-spacing:1px;}
+footer strong{color:var(--red);}
+.loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:20px;transition:opacity 0.4s;}
+.loading-overlay.hidden{opacity:0;pointer-events:none;}
+.loading-logo{font-family:var(--display);font-size:48px;letter-spacing:6px;color:var(--gold);text-shadow:0 0 40px rgba(245,200,66,0.4);animation:flicker 2s infinite;}
+@keyframes flicker{0%,90%,100%{opacity:1}92%{opacity:0.7}94%{opacity:1}96%{opacity:0.8}}
+.loading-bar-wrap{width:300px;height:2px;background:var(--border);}
+.loading-bar{height:100%;background:var(--gold);width:0%;animation:loadbar 1.5s ease forwards;box-shadow:0 0 10px var(--gold);}
+@keyframes loadbar{to{width:100%}}
+.loading-text{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:2px;animation:blink 1s step-end infinite;}
+@keyframes blink{50%{opacity:0}}
+/* screenshot thumbnails in analysis */
+.chart-thumbs{display:flex;gap:6px;margin-bottom:10px;}
+.chart-thumb{flex:1;border:1px solid var(--border);object-fit:contain;max-height:120px;display:block;border-radius:2px;}
+.chart-thumb-label{font-family:var(--mono);font-size:8px;color:var(--text-dim);letter-spacing:1px;text-align:center;margin-top:3px;text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<div class="loading-overlay" id="loading">
+  <div class="loading-logo">PA ENGINE</div>
+  <div class="loading-bar-wrap"><div class="loading-bar"></div></div>
+  <div class="loading-text">INITIALISING PRICE ACTION ENGINE...</div>
+</div>
+
+<div class="container">
+  <header>
+    <div class="logo-block">
+      <div class="logo-icon">PA</div>
+      <div class="logo-text">
+        <h1 id="dash-title">PA SIGNAL ENGINE</h1>
+        <span>Pure Price Action · Vision-Powered · All Assets · No Indicators Required</span>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div class="live-badge"><div class="live-dot"></div><span>VISION</span></div>
+      <div id="clock">--:--:-- UTC</div>
+    </div>
+  </header>
+
+  <div class="api-error" id="api-error"></div>
+
+  <!-- TABS -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('analyze',this)">ANALYZE</button>
+    <button class="tab-btn" onclick="switchTab('journal',this)">JOURNAL</button>
+    <button class="tab-btn" onclick="switchTab('performance',this)">PERFORMANCE</button>
+    <button class="tab-btn" onclick="switchTab('insights',this)">INSIGHTS</button>
+  </div>
+
+  <!-- ══ TAB: ANALYZE ══ -->
+  <div class="tab-panel active" id="tab-analyze">
+    <div class="main-grid">
+
+      <!-- LEFT: Upload Panel -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">CHART SCREENSHOTS</div>
+            <span class="card-badge badge-blue">DUAL TIMEFRAME</span>
+          </div>
+
+          <!-- HTF Upload -->
+          <div style="margin-bottom:6px">
+            <div class="ctx-label" style="margin-bottom:4px">
+              Higher Timeframe — Bias &amp; Structure
+              <span style="color:var(--blue);margin-left:6px">4H / Daily / Weekly</span>
+            </div>
+            <div class="upload-zone" id="zone-htf"
+                 onclick="handleZoneClick('htf')"
+                 ondragover="onDrag(event,true,'htf')"
+                 ondragleave="onDrag(event,false,'htf')"
+                 ondrop="onDrop(event,'htf')">
+              <img class="preview-img" id="img-htf" alt="HTF chart">
+              <button class="clear-btn" id="clear-htf" onclick="clearZone(event,'htf')">✕ CLEAR</button>
+              <div class="placeholder" id="ph-htf">
+                <div class="ph-icon">📊</div>
+                <div class="ph-title">HTF CHART</div>
+                <div class="ph-sub">Drop or click · Optional but recommended<br>Improves trend bias accuracy</div>
+                <span class="ph-badge htf-badge">TREND BIAS</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- LTF Upload -->
+          <div style="margin-bottom:12px">
+            <div class="ctx-label" style="margin-bottom:4px">
+              Entry Timeframe — Pattern &amp; Signal
+              <span style="color:var(--gold);margin-left:6px">15M / 5M / 1H</span>
+            </div>
+            <div class="upload-zone" id="zone-ltf"
+                 onclick="handleZoneClick('ltf')"
+                 ondragover="onDrag(event,true,'ltf')"
+                 ondragleave="onDrag(event,false,'ltf')"
+                 ondrop="onDrop(event,'ltf')">
+              <img class="preview-img" id="img-ltf" alt="LTF chart">
+              <button class="clear-btn" id="clear-ltf" onclick="clearZone(event,'ltf')">✕ CLEAR</button>
+              <div class="placeholder" id="ph-ltf">
+                <div class="ph-icon">🕯️</div>
+                <div class="ph-title">ENTRY CHART</div>
+                <div class="ph-sub">Drop or click · Required<br>Where the signal forms</div>
+                <span class="ph-badge ltf-badge">ENTRY SIGNAL</span>
+              </div>
+            </div>
+          </div>
+
+          <input type="file" id="file-htf" accept="image/*" onchange="onFileSelect(event,'htf')">
+          <input type="file" id="file-ltf" accept="image/*" onchange="onFileSelect(event,'ltf')">
+
+          <!-- Context -->
+          <div class="ctx-label" style="margin-bottom:6px">Context <span style="opacity:0.5">(Claude auto-detects if blank)</span></div>
+          <div class="ctx-grid three">
+            <div>
+              <div class="ctx-label">Asset</div>
+              <select class="ctx-select" id="ctx-asset">
+                <option value="">Auto-detect</option>
+                <optgroup label="Metals"><option value="XAUUSD">XAUUSD · Gold</option><option value="XAGUSD">XAGUSD · Silver</option></optgroup>
+                <optgroup label="Forex"><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option><option value="AUDUSD">AUDUSD</option><option value="USDCAD">USDCAD</option><option value="GBPJPY">GBPJPY</option><option value="EURJPY">EURJPY</option></optgroup>
+                <optgroup label="Indices"><option value="SPX500">SPX500</option><option value="NAS100">NAS100</option><option value="US30">US30</option><option value="DAX40">DAX40</option><option value="UK100">UK100</option></optgroup>
+                <optgroup label="Crypto"><option value="BTCUSD">BTCUSD</option><option value="ETHUSD">ETHUSD</option></optgroup>
+                <optgroup label="Energy"><option value="USOIL">USOIL · WTI</option><option value="UKOIL">UKOIL · Brent</option></optgroup>
+              </select>
+            </div>
+            <div>
+              <div class="ctx-label">HTF Timeframe</div>
+              <select class="ctx-select" id="ctx-htf-tf">
+                <option value="">Auto-detect</option>
+                <option value="1H">1H</option><option value="4H">4H</option>
+                <option value="Daily">Daily</option><option value="Weekly">Weekly</option>
+              </select>
+            </div>
+            <div>
+              <div class="ctx-label">Entry Timeframe</div>
+              <select class="ctx-select" id="ctx-ltf-tf">
+                <option value="">Auto-detect</option>
+                <option value="1M">1M</option><option value="5M">5M</option>
+                <option value="15M">15M</option><option value="1H">1H</option>
+              </select>
+            </div>
+          </div>
+          <div class="ctx-grid" style="margin-top:8px">
+            <div>
+              <div class="ctx-label">Session</div>
+              <select class="ctx-select" id="ctx-session">
+                <option value="">Auto-detect</option>
+                <option value="London">London</option>
+                <option value="New York">New York</option>
+                <option value="Asian">Asian</option>
+                <option value="LDN/NY Overlap">LDN/NY Overlap</option>
+              </select>
+            </div>
+            <div>
+              <div class="ctx-label">Bias Hint</div>
+              <select class="ctx-select" id="ctx-bias">
+                <option value="">No hint — let Claude decide</option>
+                <option value="looking for longs">Looking for longs</option>
+                <option value="looking for shorts">Looking for shorts</option>
+                <option value="neutral / not sure">Neutral / not sure</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ctx-label">Notes to Claude</div>
+            <input type="text" class="ctx-input" id="ctx-notes" placeholder="e.g. Price rejected 3285 twice, volume spike on last candle...">
+          </div>
+
+          <button class="analyze-btn" id="analyze-btn" onclick="runAnalysis()" disabled>
+            🔍 &nbsp; ANALYZE PRICE ACTION
+          </button>
+          <div class="prog-wrap" id="prog-wrap">
+            <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+            <div class="prog-label" id="prog-label">Reading charts...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTRE: Results -->
+      <div>
+        <!-- Verdict -->
+        <div class="verdict-box idle" id="verdict-box">
+          <div class="verdict-label">PRICE ACTION DECISION</div>
+          <div class="verdict-main neutral" id="verdict-main">AWAITING CHARTS</div>
+          <div class="verdict-stars" id="verdict-stars"></div>
+          <div class="verdict-sub" id="verdict-sub">Upload at least the entry timeframe chart and click Analyze.</div>
+        </div>
+
+        <!-- Conviction Meter -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">CONVICTION SCORE</div>
+            <span class="card-badge badge-dim" id="conv-badge">— / 100</span>
+          </div>
+          <div class="conviction-wrap">
+            <div class="conviction-track">
+              <div class="conviction-fill" id="conv-fill" style="width:0%"></div>
+            </div>
+            <div class="conviction-labels">
+              <span>0 · SKIP</span><span>40 · LOW</span><span>60 · MODERATE</span><span>80 · HIGH</span><span>100</span>
+            </div>
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:6px;line-height:1.7">
+            &lt;40 = Skip · 40-59 = Reduce size · 60-79 = Standard size · 80+ = Full size or add
+          </div>
+        </div>
+
+        <!-- 6-Phase PA Analysis -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">PA ANALYSIS · 6 PHASES</div>
+            <span class="card-badge badge-dim" id="phase-summary">—</span>
+          </div>
+          <div class="phase-list" id="phase-list">
+            <div class="phase-row na"><span class="phase-icon">⬜</span><span class="phase-text">Phase 1 — Trend Structure<span class="phase-sub">HTF direction: higher highs/lows or lower highs/lows</span></span></div>
+            <div class="phase-row na"><span class="phase-icon">⬜</span><span class="phase-text">Phase 2 — Key Level Confluence<span class="phase-sub">Is price at a significant support, resistance or decision zone?</span></span></div>
+            <div class="phase-row na"><span class="phase-icon">⬜</span><span class="phase-text">Phase 3 — Entry Pattern<span class="phase-sub">Pin bar, engulfing, inside bar, break of structure, FVG fill</span></span></div>
+            <div class="phase-row na"><span class="phase-icon">⬜</span><span class="phase-text">Phase 4 — Momentum<span class="phase-sub">Candle bodies expanding or contracting? Volume confirming?</span></span></div>
+            <div class="phase-row na"><span class="phase-icon">⬜</span><span class="phase-text">Phase 5 — Session &amp; Timing<span class="phase-sub">Active session? Avoid first 15min after major news?</span></span></div>
+            <div class="phase-row na"><span class="phase-icon">⬜</span><span class="phase-text">Phase 6 — Risk/Reward<span class="phase-sub">Is there a clean stop below/above structure? R:R ≥ 1.5?</span></span></div>
+          </div>
+        </div>
+
+        <!-- Trade Plan -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">TRADE PLAN</div>
+            <span class="card-badge badge-dim" id="plan-badge">PENDING</span>
+          </div>
+          <div class="plan-row"><span class="plan-label">ASSET</span><span class="plan-val val-blue" id="plan-asset">—</span></div>
+          <div class="plan-row"><span class="plan-label">DIRECTION</span><span class="plan-val" id="plan-dir" style="color:var(--text-dim)">—</span></div>
+          <div class="plan-row"><span class="plan-label">ENTRY ZONE</span><span class="plan-val val-entry" id="plan-entry">—</span></div>
+          <div class="plan-row"><span class="plan-label">STOP LOSS</span><span class="plan-val val-sl" id="plan-sl">—</span></div>
+          <div class="plan-row"><span class="plan-label">TP1 · 1.5R</span><span class="plan-val val-tp1" id="plan-tp1">—</span></div>
+          <div class="plan-row"><span class="plan-label">TP2 · 2.5R</span><span class="plan-val val-tp2" id="plan-tp2">—</span></div>
+          <div class="plan-row"><span class="plan-label">INVALIDATION</span><span class="plan-val" style="color:var(--text-dim);font-size:11px" id="plan-invalid">—</span></div>
+        </div>
+
+        <!-- AI Panel -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">AI ANALYSIS</div>
+            <span class="card-badge badge-blue">CLAUDE · PRICE ACTION</span>
+          </div>
+          <div class="ai-panel" id="ai-panel">
+            <div class="ai-panel-header">
+              <span class="ai-panel-title">⬡ 6-PHASE PRICE ACTION ENGINE</span>
+              <span class="ai-badge" id="ai-badge">AWAITING CHARTS</span>
+            </div>
+            <div class="ai-panel-body" id="ai-body">
+              <span style="color:var(--text-dim)">Upload chart screenshots and click Analyze to get a full price action breakdown...</span>
+            </div>
+          </div>
+          <button class="save-btn" id="save-btn" onclick="saveToJournal()" disabled>💾 SAVE SIGNAL TO JOURNAL</button>
+        </div>
+      </div>
+
+      <!-- SIDEBAR -->
+      <div class="sidebar">
+        <!-- Accuracy Guide -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">ACCURACY GUIDE</div>
+            <span class="card-badge badge-gold">TIPS</span>
+          </div>
+          <div class="tip-row"><span class="tip-icon">📊</span><span class="tip-text"><strong>Two charts beat one.</strong> HTF sets the bias, LTF finds the entry. Miss the HTF and you're trading against trend.</span></div>
+          <div class="tip-row"><span class="tip-icon">🕯️</span><span class="tip-text"><strong>Show 50-100 candles.</strong> Claude needs structure context — not just the last 5 bars.</span></div>
+          <div class="tip-row"><span class="tip-icon">📍</span><span class="tip-text"><strong>Zoom into the pattern.</strong> Entry candle must be clearly visible — body and wicks readable.</span></div>
+          <div class="tip-row"><span class="tip-icon">📏</span><span class="tip-text"><strong>Include price scale.</strong> Claude reads exact levels from the Y-axis. Don't crop it.</span></div>
+          <div class="tip-row"><span class="tip-icon">🕐</span><span class="tip-text"><strong>Include time axis.</strong> Session timing matters — Claude needs to see when the candle formed.</span></div>
+          <div class="tip-row"><span class="tip-icon">💡</span><span class="tip-text"><strong>Add notes.</strong> If you see something specific — a rejection, a gap, a news spike — tell Claude in the notes field.</span></div>
+          <div class="tip-row"><span class="tip-icon">🔁</span><span class="tip-text"><strong>Mark outcomes.</strong> After each trade, click the result. Claude learns which of your setups have edge.</span></div>
+        </div>
+
+        <!-- Journal Snapshot -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">JOURNAL</div>
+            <span class="card-badge badge-gold" id="j-stats-badge">0 TRADES</span>
+          </div>
+          <div id="j-wr-section" style="display:none;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-dim)">
+              <span>WIN RATE</span><span id="j-wr-pct" style="color:var(--green)">—</span>
+            </div>
+            <div class="wr-bar-wrap"><div class="wr-bar-fill" id="j-wr-bar" style="width:0%"></div></div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text-dim)">
+              <span id="j-wl">W:0 L:0 BE:0</span><span id="j-pending">0 PENDING</span>
+            </div>
+          </div>
+          <div id="j-mini"></div>
+        </div>
+      </div>
+
+    </div><!-- /main-grid -->
+  </div>
+
+  <!-- ══ TAB: JOURNAL ══ -->
+  <div class="tab-panel" id="tab-journal">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">TRADE JOURNAL</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="card-badge badge-gold" id="full-j-count">0 TRADES</span>
+          <button onclick="loadJournal()" style="background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-family:var(--mono);font-size:9px;padding:4px 12px;cursor:pointer;letter-spacing:1px;border-radius:2px;">↻ REFRESH</button>
+        </div>
+      </div>
+      <div id="full-j-stats" style="display:none;margin-bottom:14px;font-family:var(--mono);font-size:10px;color:var(--text-dim);display:flex;gap:20px;">
+        <span>WIN RATE <span id="full-wr-pct" style="color:var(--green)">—</span></span>
+        <span>P&amp;L <span id="full-pnl">—</span></span>
+        <span>AVG/TRADE <span id="full-avg">—</span></span>
+      </div>
+      <div id="full-journal"></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: PERFORMANCE ══ -->
+  <div class="tab-panel" id="tab-performance">
+    <div id="perf-content">
+      <div class="card" style="text-align:center;padding:40px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:1px">Save at least 3 completed trades to see performance stats.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: INSIGHTS ══ -->
+  <div class="tab-panel" id="tab-insights">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">AI INSIGHTS</div>
+        <span class="card-badge badge-blue">CLAUDE · PATTERN ANALYSIS</span>
+      </div>
+      <div id="insights-content" style="font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:30px;text-align:center;letter-spacing:1px">
+        5+ completed trades needed to generate personalised insights.
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <strong>⚠ DISCLAIMER:</strong> For educational and informational purposes only. Not financial advice.<br>
+    Always use proper risk management. Past performance does not guarantee future results.
+  </footer>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const SUPABASE_URL = 'https://rcbiuusyzlsdxllrgtxl.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjYml1dXN5emxzZHhsbHJndHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzOTg1MTIsImV4cCI6MjA4ODk3NDUxMn0.jYGcai3qLfWtx1tPLIcQafcNbZ3Ll2V78v2NXW9ZWXk';
+const SB_HDRS     = { 'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}` };
+const AI_PROXY    = 'https://shrill-pine-3967.realedesigns.workers.dev';
+const TABLE       = 'trade_signals';
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let images = { htf: null, ltf: null };  // base64 strings
+let lastResult = null;
+
+// ─────────────────────────────────────────────
+// CLOCK
+// ─────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toISOString().replace('T',' ').split('.')[0] + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─────────────────────────────────────────────
+// TABS
+// ─────────────────────────────────────────────
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+id).classList.add('active');
+  if (id === 'journal')     loadJournal();
+  if (id === 'performance') loadPerformance();
+  if (id === 'insights')    loadInsights();
+}
+
+// ─────────────────────────────────────────────
+// STATUS
+// ─────────────────────────────────────────────
+function showStatus(msg, isError) {
+  const el = document.getElementById('api-error');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+  el.style.borderColor = isError ? 'var(--red)' : 'var(--gold)';
+  el.style.color       = isError ? 'var(--red)' : 'var(--gold)';
+}
+
+// ─────────────────────────────────────────────
+// UPLOAD HANDLING
+// ─────────────────────────────────────────────
+function handleZoneClick(tf) {
+  if (!document.getElementById('zone-'+tf).classList.contains('has-image'))
+    document.getElementById('file-'+tf).click();
+}
+function onDrag(e, over, tf) {
+  e.preventDefault();
+  document.getElementById('zone-'+tf).classList.toggle('drag-over', over);
+}
+function onDrop(e, tf) {
+  e.preventDefault();
+  document.getElementById('zone-'+tf).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processFile(file, tf);
+}
+function onFileSelect(e, tf) {
+  const file = e.target.files[0];
+  if (file) processFile(file, tf);
+}
+function processFile(file, tf) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const dataUrl = ev.target.result;
+    images[tf] = dataUrl.split(',')[1];
+    const img = document.getElementById('img-'+tf);
+    img.src = dataUrl;
+    img.style.display = 'block';
+    document.getElementById('ph-'+tf).style.display = 'none';
+    document.getElementById('clear-'+tf).style.display = 'block';
+    document.getElementById('zone-'+tf).classList.add('has-image');
+    checkEnableBtn();
+  };
+  reader.readAsDataURL(file);
+}
+function clearZone(e, tf) {
+  e.stopPropagation();
+  images[tf] = null;
+  const img = document.getElementById('img-'+tf);
+  img.style.display = 'none'; img.src = '';
+  document.getElementById('ph-'+tf).style.display = 'flex';
+  document.getElementById('clear-'+tf).style.display = 'none';
+  document.getElementById('zone-'+tf).classList.remove('has-image');
+  document.getElementById('file-'+tf).value = '';
+  checkEnableBtn();
+}
+function checkEnableBtn() {
+  document.getElementById('analyze-btn').disabled = !images.ltf;
+}
+
+// ─────────────────────────────────────────────
+// MAIN ANALYSIS — 6-phase price action vision
+// ─────────────────────────────────────────────
+async function runAnalysis() {
+  if (!images.ltf) return;
+
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true; btn.classList.add('loading'); btn.textContent = '⟳   READING PRICE ACTION...';
+
+  const progWrap  = document.getElementById('prog-wrap');
+  const progFill  = document.getElementById('prog-fill');
+  const progLabel = document.getElementById('prog-label');
+  progWrap.style.display = 'block';
+
+  const stages = [
+    [12, 'Phase 1 — Reading trend structure...'],
+    [26, 'Phase 2 — Identifying key levels...'],
+    [42, 'Phase 3 — Analysing entry pattern...'],
+    [58, 'Phase 4 — Evaluating momentum...'],
+    [72, 'Phase 5 — Checking session & timing...'],
+    [86, 'Phase 6 — Calculating risk/reward...'],
+    [95, 'Scoring conviction & building trade plan...'],
+  ];
+  let si = 0;
+  const stimer = setInterval(() => {
+    if (si < stages.length) {
+      const [p,l] = stages[si++];
+      progFill.style.width = p+'%';
+      progLabel.textContent = l;
+    }
+  }, 900);
+
+  // Context
+  const ctxAsset   = document.getElementById('ctx-asset').value;
+  const ctxHtfTf   = document.getElementById('ctx-htf-tf').value;
+  const ctxLtfTf   = document.getElementById('ctx-ltf-tf').value;
+  const ctxSession = document.getElementById('ctx-session').value;
+  const ctxBias    = document.getElementById('ctx-bias').value;
+  const ctxNotes   = document.getElementById('ctx-notes').value;
+
+  // Learning context
+  const learningCtx = await buildLearningContext();
+
+  // Build message content — include both images if available
+  const msgContent = [];
+
+  if (images.htf) {
+    msgContent.push({ type:'text', text: `IMAGE 1 — Higher Timeframe Chart (${ctxHtfTf || 'HTF'}): Use this for trend structure, major S/R, and overall bias.` });
+    msgContent.push({ type:'image', source:{ type:'base64', media_type:'image/png', data:images.htf } });
+  }
+
+  msgContent.push({ type:'text', text: `IMAGE ${images.htf ? '2' : '1'} — Entry Timeframe Chart (${ctxLtfTf || 'LTF'}): Use this for the specific entry pattern, momentum, and trade setup.` });
+  msgContent.push({ type:'image', source:{ type:'base64', media_type:'image/png', data:images.ltf } });
+
+  const contextBlock = [
+    ctxAsset   ? `Asset: ${ctxAsset}`            : '',
+    ctxSession ? `Session: ${ctxSession}`         : '',
+    ctxBias    ? `Trader bias hint: ${ctxBias}`   : '',
+    ctxNotes   ? `Trader notes: ${ctxNotes}`       : '',
+    learningCtx? `Trader history:\n${learningCtx}` : '',
+  ].filter(Boolean).join('\n');
+
+  const prompt = `You are an expert price action trader and analyst. Analyse the provided chart screenshot(s) using pure price action — no indicators needed.
+
+${contextBlock ? 'CONTEXT:\n' + contextBlock + '\n' : ''}
+Run a structured 6-phase price action analysis:
+
+PHASE 1 — TREND STRUCTURE
+Read the chart(s) to determine the dominant trend. Look for:
+- Higher highs and higher lows = uptrend
+- Lower highs and lower lows = downtrend  
+- Choppy / no clear HH-HL or LH-LL sequence = ranging/neutral
+- If two charts: HTF sets the bias, LTF shows the current context
+Rate this phase: PASS (clear trend aligned with potential trade), WARN (ambiguous), FAIL (counter-trend or ranging)
+
+PHASE 2 — KEY LEVEL CONFLUENCE
+Is price at or near a significant level? Look for:
+- Prior swing highs/lows
+- Round psychological numbers
+- Consolidation zones / balance areas
+- Prior breakout levels retested as support/resistance
+- Daily/weekly open levels
+Rate: PASS (strong level), WARN (moderate level), FAIL (mid-range, no clear level), NA (no HTF chart)
+
+PHASE 3 — ENTRY PATTERN
+What specific price action pattern is forming on the entry timeframe? Look for:
+- Pin bar / hammer / shooting star (rejection wicks)
+- Engulfing candle (bullish or bearish)
+- Inside bar breakout
+- Break of structure (BOS) — price closes beyond a key swing
+- Fair Value Gap (FVG) — 3-candle imbalance, price re-entering
+- Order block entry — price returning to a prior imbalance candle
+- Double top/bottom
+Rate: PASS (clear valid pattern), WARN (marginal pattern), FAIL (no pattern / ambiguous)
+
+PHASE 4 — MOMENTUM
+Is momentum supporting the trade? Look for:
+- Candle bodies: expanding (momentum building) or contracting (momentum fading)?
+- Consecutive candles in the direction
+- Any divergence signs (price making new highs but candles shrinking)
+- Volume if visible: confirming or diverging?
+Rate: PASS (momentum confirmed), WARN (mixed signals), FAIL (against or fading)
+
+PHASE 5 — SESSION & TIMING
+Is this an optimal time to trade? Look for:
+- London or NY session (highest liquidity for most assets)
+- Avoid: first 15 minutes after major news, Asian session for most FX/metals
+- Time of day relative to key session opens
+Rate: PASS (prime session), WARN (acceptable timing), FAIL (avoid), NA (cannot determine)
+
+PHASE 6 — RISK / REWARD
+Is there a clean trade setup with valid R:R? Calculate:
+- Entry: current price or specific pattern entry level
+- Stop Loss: below/above the nearest structure invalidation point (swing low for longs, swing high for shorts)
+- TP1: entry ± (stop distance × 1.5) — first target
+- TP2: entry ± (stop distance × 2.5) — second target
+- R:R must be ≥ 1.5 to qualify as PASS
+Rate: PASS (R:R ≥ 1.5, clean stop), WARN (R:R 1.0-1.5 or wide stop), FAIL (R:R < 1.0 or no clean stop)
+
+CONVICTION SCORING:
+Score each phase 0-20 points (PASS=17-20, WARN=8-12, FAIL=0-3, NA=10 neutral):
+Total out of 100. Thresholds: <40 SKIP | 40-59 LOW | 60-79 MODERATE | 80+ HIGH
+
+DECISION LOGIC:
+- ENTER LONG: phases 1+3 both PASS, conviction ≥60, direction bullish
+- ENTER SHORT: phases 1+3 both PASS, conviction ≥60, direction bearish
+- WAIT: conviction 40-59 OR phase 1 WARN OR phase 3 WARN — conditions developing
+- SKIP: conviction <40 OR phase 1 FAIL OR phase 3 FAIL
+
+STAR RATING: 1-3 stars based on conviction (≥80=3stars, 60-79=2stars, 40-59=1star, <40=0)
+
+Respond ONLY in this exact JSON (no markdown, no extra text):
+{
+  "symbol": "XAUUSD",
+  "direction": "LONG|SHORT|NEUTRAL",
+  "decision": "ENTER LONG|ENTER SHORT|WAIT|SKIP",
+  "stars": 3,
+  "conviction": 78,
+  "decision_reason": "one clear sentence — the primary reason for this decision",
+  "phases": [
+    {"phase": 1, "name": "Trend Structure",    "status": "pass|warn|fail|na", "detail": "what Claude sees"},
+    {"phase": 2, "name": "Key Level",          "status": "pass|warn|fail|na", "detail": "what Claude sees"},
+    {"phase": 3, "name": "Entry Pattern",      "status": "pass|warn|fail|na", "detail": "specific pattern identified"},
+    {"phase": 4, "name": "Momentum",           "status": "pass|warn|fail|na", "detail": "what Claude sees"},
+    {"phase": 5, "name": "Session & Timing",   "status": "pass|warn|fail|na", "detail": "what Claude sees"},
+    {"phase": 6, "name": "Risk / Reward",      "status": "pass|warn|fail|na", "detail": "calculated R:R"}
+  ],
+  "pattern_name": "short label e.g. 'Bullish engulfing at support', 'Pin bar rejection', 'BOS retest'",
+  "reasoning": "2-3 sentences — what price action is doing and why this decision",
+  "key_strength": "the single strongest factor supporting this trade",
+  "key_risk": "the single biggest risk or red flag",
+  "ai_says": "one precise tactical line — what to do right now",
+  "risk_note": "one specific risk management tip",
+  "trade_plan": {
+    "asset": "XAUUSD",
+    "timeframe": "15M",
+    "direction": "LONG",
+    "entry": 3291.50,
+    "stop_loss": 3282.00,
+    "stop_reason": "Below the pin bar low and prior swing low",
+    "tp1": 3305.75,
+    "tp2": 3315.25,
+    "rr_ratio": "1:1.5 / 1:2.5",
+    "invalidation": "Candle close below 3282.00"
+  }
+}`;
+
+  msgContent.push({ type:'text', text: prompt });
+
+  try {
+    const res = await fetch(AI_PROXY, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 2500,
+        messages: [{ role:'user', content: msgContent }]
+      })
+    });
+
+    clearInterval(stimer);
+    if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + (await res.text()).substring(0,100));
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const raw = data.content?.find(b => b.type==='text')?.text || '';
+    const result = JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    progFill.style.width = '100%';
+    progLabel.textContent = '✓ Analysis complete';
+
+    lastResult = result;
+    renderResult(result);
+    document.getElementById('save-btn').disabled = false;
+    showStatus(`✓ ${result.symbol || ''} · ${result.pattern_name} · Conviction ${result.conviction}/100`, false);
+    setTimeout(() => { progWrap.style.display = 'none'; }, 2000);
+
+  } catch(err) {
+    clearInterval(stimer);
+    progFill.style.width = '100%';
+    progFill.style.background = 'var(--red)';
+    progLabel.textContent = '⚠ ' + err.message.substring(0,80);
+    showStatus('❌ Analysis failed: ' + err.message.substring(0,100), true);
+  }
+
+  btn.disabled = false; btn.classList.remove('loading'); btn.textContent = '🔍   ANALYZE PRICE ACTION';
+  checkEnableBtn();
+}
+
+// ─────────────────────────────────────────────
+// RENDER RESULT
+// ─────────────────────────────────────────────
+function renderResult(r) {
+  const { direction, decision, stars, conviction, decision_reason,
+          phases, pattern_name, reasoning, key_strength, key_risk,
+          ai_says, risk_note, trade_plan } = r;
+
+  // ── Verdict ──
+  const vbox  = document.getElementById('verdict-box');
+  const vmain = document.getElementById('verdict-main');
+  const vsub  = document.getElementById('verdict-sub');
+  const vstars = document.getElementById('verdict-stars');
+  const decClass = decision==='ENTER LONG'?'bull':decision==='ENTER SHORT'?'bear':decision==='WAIT'?'wait':'skip';
+  const txtClass = decision==='ENTER LONG'?'bull':decision==='ENTER SHORT'?'bear':decision==='WAIT'?'warn':'neutral';
+  vbox.className  = 'verdict-box ' + decClass;
+  vmain.className = 'verdict-main ' + txtClass;
+  vmain.textContent = decision;
+  vstars.textContent = stars ? '⭐'.repeat(stars) : '';
+  vsub.textContent   = decision_reason;
+
+  // Update title
+  if (r.symbol) {
+    document.getElementById('dash-title').textContent = r.symbol + ' · PA ENGINE';
+    document.title = r.symbol + ' · PA Signal Engine';
+  }
+
+  // ── Conviction meter ──
+  const pct = Math.min(100, Math.max(0, conviction || 0));
+  document.getElementById('conv-fill').style.width   = pct + '%';
+  document.getElementById('conv-badge').textContent  = pct + ' / 100 · ' +
+    (pct >= 80 ? 'HIGH' : pct >= 60 ? 'MODERATE' : pct >= 40 ? 'LOW' : 'SKIP');
+  document.getElementById('conv-badge').className    = 'card-badge ' +
+    (pct >= 80 ? 'badge-green' : pct >= 60 ? 'badge-gold' : pct >= 40 ? 'badge-dim' : 'badge-red');
+
+  // ── 6-Phase list ──
+  const icons = { pass:'✅', warn:'⚠️', fail:'❌', na:'⬜' };
+  const passes = phases.filter(p => p.status==='pass').length;
+  const warns  = phases.filter(p => p.status==='warn').length;
+  const fails  = phases.filter(p => p.status==='fail').length;
+  document.getElementById('phase-summary').textContent = `${passes} PASS · ${warns} WARN · ${fails} FAIL`;
+  document.getElementById('phase-list').innerHTML = phases.map(p => `
+    <div class="phase-row ${p.status}">
+      <span class="phase-icon">${icons[p.status]||'⬜'}</span>
+      <span class="phase-text">Phase ${p.phase} — ${p.name}
+        <span class="phase-sub">${p.detail}</span>
+      </span>
+    </div>`).join('');
+
+  // ── Trade plan ──
+  const tp = trade_plan;
+  const fmt = (n) => n != null && !isNaN(n) ? Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:5}) : '—';
+  document.getElementById('plan-asset').textContent   = tp.asset || r.symbol || '—';
+  document.getElementById('plan-dir').textContent     = tp.direction || direction || '—';
+  document.getElementById('plan-dir').style.color     = tp.direction==='LONG'?'var(--green)':tp.direction==='SHORT'?'var(--red)':'var(--text-dim)';
+  document.getElementById('plan-entry').textContent   = tp.entry   ? fmt(tp.entry)    : '—';
+  document.getElementById('plan-sl').textContent      = tp.stop_loss ? fmt(tp.stop_loss) : '—';
+  document.getElementById('plan-tp1').textContent     = tp.tp1 ? fmt(tp.tp1) : '—';
+  document.getElementById('plan-tp2').textContent     = tp.tp2 ? fmt(tp.tp2) : '—';
+  document.getElementById('plan-invalid').textContent = tp.invalidation || tp.stop_reason || '—';
+  const planBadge = document.getElementById('plan-badge');
+  planBadge.textContent = decision.includes('ENTER') ? `${tp.rr_ratio || 'CALCULATED'}` : 'N/A — ' + decision;
+  planBadge.className   = 'card-badge ' + (decision.includes('ENTER') ? 'badge-green' : 'badge-dim');
+
+  // ── AI Panel ──
+  const badge = document.getElementById('ai-badge');
+  const body  = document.getElementById('ai-body');
+  const vc    = decision.includes('ENTER') ? 'confirms' : decision==='WAIT' ? 'caution' : 'conflicts';
+  const vcCol = decision.includes('ENTER') ? 'var(--green)' : decision==='WAIT' ? 'var(--yellow)' : 'var(--red)';
+  badge.className   = 'ai-badge ' + vc;
+  badge.textContent = decision.includes('ENTER') ? 'CONFIRMS' : decision==='WAIT' ? 'CAUTION' : 'SKIP';
+
+  // Show thumbnails if both images loaded
+  const thumbsHtml = (images.htf || images.ltf) ? `
+    <div class="chart-thumbs">
+      ${images.htf ? `<div><img class="chart-thumb" src="data:image/png;base64,${images.htf}"><div class="chart-thumb-label">HTF · Bias</div></div>` : ''}
+      ${images.ltf ? `<div><img class="chart-thumb" src="data:image/png;base64,${images.ltf}"><div class="chart-thumb-label">LTF · Entry</div></div>` : ''}
+    </div>` : '';
+
+  body.innerHTML = `
+    ${thumbsHtml}
+    <div class="ai-pattern-tag">📐 ${pattern_name}</div>
+    <div style="color:var(--text);margin-bottom:8px">${reasoning}</div>
+    <div class="ai-split">
+      <div>
+        <div class="ai-col-label">KEY STRENGTH</div>
+        <div class="ai-col-val" style="color:var(--green)">${key_strength}</div>
+      </div>
+      <div>
+        <div class="ai-col-label">KEY RISK</div>
+        <div class="ai-col-val" style="color:var(--red)">${key_risk}</div>
+      </div>
+    </div>
+    <div class="ai-split" style="margin-top:0">
+      <div>
+        <div class="ai-col-label">AI SAYS</div>
+        <div class="ai-col-val" style="color:${vcCol}">${ai_says}</div>
+      </div>
+      <div>
+        <div class="ai-col-label">STOP REASON</div>
+        <div class="ai-col-val">${tp.stop_reason || '—'}</div>
+      </div>
+    </div>
+    <div class="ai-risk">⚠ ${risk_note}</div>`;
+
+  loadMiniJournal();
+}
+
+// ─────────────────────────────────────────────
+// SAVE TO JOURNAL
+// ─────────────────────────────────────────────
+async function saveToJournal() {
+  if (!lastResult) return;
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.textContent = '⟳ SAVING...';
+  const r  = lastResult;
+  const tp = r.trade_plan;
+
+  const payload = {
+    symbol:       tp.asset || r.symbol || 'UNKNOWN',
+    direction:    tp.direction === 'LONG' ? 'LONG' : tp.direction === 'SHORT' ? 'SHORT' : 'N/A',
+    timeframe:    tp.timeframe || document.getElementById('ctx-ltf-tf').value || '—',
+    entry:        tp.entry     ? parseFloat(tp.entry)     : null,
+    stop_loss:    tp.stop_loss ? parseFloat(tp.stop_loss) : null,
+    tp1:          tp.tp1 ? parseFloat(tp.tp1) : null,
+    tp2:          tp.tp2 ? parseFloat(tp.tp2) : null,
+    score_total:  r.conviction || 0,
+    conviction:   r.conviction >= 80 ? 'HIGH' : r.conviction >= 60 ? 'MODERATE' : 'LOW',
+    ai_verdict:   r.decision.includes('ENTER') ? 'CONFIRMS' : r.decision==='WAIT' ? 'CAUTION' : 'CONFLICTS',
+    ai_reasoning: r.reasoning,
+    ai_pattern:   r.pattern_name,
+    session:      document.getElementById('ctx-session').value || 'Unknown',
+    macro_bias:   r.direction,
+    outcome:      'PENDING',
+    score_breakdown: {
+      conviction: r.conviction,
+      stars:      r.stars,
+      decision:   r.decision,
+      phases:     r.phases.map(p => `${p.name}:${p.status}`).join('|'),
+      key_strength: r.key_strength,
+      key_risk:     r.key_risk,
+    }
+  };
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
+      method:'POST', headers:{...SB_HDRS,'Prefer':'return=representation'},
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    btn.textContent = '✅ SAVED TO JOURNAL';
+    btn.style.borderColor = 'var(--green)'; btn.style.color = 'var(--green)';
+    loadMiniJournal();
+    setTimeout(() => {
+      btn.textContent = '💾 SAVE SIGNAL TO JOURNAL';
+      btn.style.borderColor = ''; btn.style.color = '';
+      btn.disabled = false;
+    }, 2500);
+  } catch(e) {
+    btn.textContent = '❌ FAILED: ' + e.message.substring(0,40);
+    btn.disabled = false;
+    showStatus('Save failed: ' + e.message, true);
+  }
+}
+
+// ─────────────────────────────────────────────
+// JOURNAL
+// ─────────────────────────────────────────────
+async function fetchTrades() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?order=created_at.desc&limit=50`, { headers:SB_HDRS });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
+}
+
+function pnlOf(r) {
+  if (r.outcome==='WIN_TP1') return 1;
+  if (r.outcome==='WIN_TP2') return 2;
+  if (r.outcome==='WIN_TP3') return 3;
+  if (r.outcome==='LOSS') return -1;
+  if (r.outcome==='BREAKEVEN') return 0;
+  return null;
+}
+
+async function loadMiniJournal() {
+  const rows = await fetchTrades();
+  const badge = document.getElementById('j-stats-badge');
+  badge.textContent = rows.length + ' TRADES';
+  const mini = document.getElementById('j-mini');
+  if (!rows.length) { mini.innerHTML = '<div class="journal-empty">No signals yet.</div>'; return; }
+
+  const resolved = rows.filter(r => r.outcome && r.outcome !== 'PENDING');
+  const wins = resolved.filter(r => pnlOf(r) > 0).length;
+  const wr   = resolved.length ? Math.round(wins/resolved.length*100) : null;
+  const losses = resolved.filter(r => r.outcome==='LOSS').length;
+  const bes    = resolved.filter(r => r.outcome==='BREAKEVEN').length;
+  const pending = rows.filter(r => r.outcome==='PENDING').length;
+
+  const wrSec = document.getElementById('j-wr-section');
+  if (resolved.length > 0) {
+    wrSec.style.display = 'block';
+    document.getElementById('j-wr-pct').textContent = wr + '%';
+    document.getElementById('j-wr-bar').style.width = wr + '%';
+    document.getElementById('j-wr-bar').style.background = wr>=60?'var(--green)':wr>=45?'var(--gold)':'var(--red)';
+    document.getElementById('j-wl').textContent  = `W:${wins} L:${losses} BE:${bes}`;
+    document.getElementById('j-pending').textContent = pending + ' PENDING';
+  }
+
+  mini.innerHTML = rows.slice(0,3).map(r => renderEntry(r, true)).join('');
+}
+
+async function loadJournal() {
+  const rows = await fetchTrades();
+  document.getElementById('full-j-count').textContent = rows.length + ' TRADES';
+  const resolved = rows.filter(r => r.outcome && r.outcome !== 'PENDING');
+  const wins = resolved.filter(r => pnlOf(r) > 0).length;
+  const pnl  = resolved.reduce((a,r) => a+(pnlOf(r)||0), 0);
+  const wr   = resolved.length ? Math.round(wins/resolved.length*100) : null;
+
+  const statsRow = document.getElementById('full-j-stats');
+  if (resolved.length >= 2) {
+    statsRow.style.display = 'flex';
+    document.getElementById('full-wr-pct').textContent = wr + '%';
+    document.getElementById('full-wr-pct').style.color = wr>=50?'var(--green)':'var(--red)';
+    document.getElementById('full-pnl').textContent = (pnl>=0?'+':'')+pnl.toFixed(1)+'R';
+    document.getElementById('full-pnl').style.color = pnl>=0?'var(--green)':'var(--red)';
+    document.getElementById('full-avg').textContent = resolved.length ? (pnl/resolved.length>=0?'+':'')+(pnl/resolved.length).toFixed(2)+'R' : '—';
+  }
+
+  const container = document.getElementById('full-journal');
+  if (!rows.length) { container.innerHTML = '<div class="journal-empty">No signals saved yet.</div>'; return; }
+  container.innerHTML = rows.map(r => renderEntry(r, false)).join('');
+}
+
+function renderEntry(r, compact) {
+  const dt = new Date(r.created_at).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  const dirCls = r.direction==='LONG'?'dir-long':'dir-short';
+  const aiCol  = r.ai_verdict==='CONFIRMS'?'var(--green)':r.ai_verdict==='CAUTION'?'var(--yellow)':'var(--red)';
+  const sb = r.score_breakdown || {};
+  const phases = sb.phases ? sb.phases.split('|').map(s => {
+    const [nm, st] = s.split(':');
+    const ic = st==='pass'?'✅':st==='warn'?'⚠️':st==='fail'?'❌':'⬜';
+    return `<span style="margin-right:6px">${ic} ${nm}</span>`;
+  }).join('') : '';
+
+  const outcomes = [
+    {key:'WIN_TP1',label:'TP1 ✓',cls:'win'},
+    {key:'WIN_TP2',label:'TP2 ✓',cls:'win'},
+    {key:'LOSS',   label:'LOSS ✗',cls:'loss'},
+    {key:'BREAKEVEN',label:'BE ⟷',cls:'be'},
+  ];
+  const outBtns = outcomes.map(o => {
+    const sel = r.outcome===o.key ? o.cls : '';
+    return `<button class="out-btn ${sel}" onclick="updateOutcome('${r.id}','${o.key}')">${o.label}</button>`;
+  }).join('');
+
+  if (compact) return `<div class="journal-entry">
+    <div class="j-header">
+      <span class="${dirCls}">${r.direction} · ${r.symbol||'—'} · ${r.timeframe||'—'}</span>
+      <span style="color:var(--text-dim);font-size:9px">${dt}</span>
+    </div>
+    <div class="j-body"><span style="color:${aiCol}">${r.ai_verdict||'—'}</span> · Score ${r.score_total||'—'}/100 · ${r.outcome||'PENDING'}</div>
+  </div>`;
+
+  return `<div class="journal-entry">
+    <div class="j-header">
+      <span class="${dirCls}">${r.direction} · ${r.symbol||'—'} · ${r.timeframe||'—'}</span>
+      <span style="color:var(--text-dim);font-size:9px">${dt}</span>
+    </div>
+    <div class="j-body">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px">
+        ${r.entry    ?`<span>Entry <span style="color:var(--gold)">${Number(r.entry).toFixed(2)}</span></span>`:''}
+        ${r.stop_loss?`<span>SL <span style="color:var(--red)">${Number(r.stop_loss).toFixed(2)}</span></span>`:''}
+        ${r.tp1      ?`<span>TP1 <span style="color:var(--green)">${Number(r.tp1).toFixed(2)}</span></span>`:''}
+      </div>
+      <div style="margin-bottom:5px;font-size:9px;line-height:1.8">${phases}</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px">
+        <span>Score <span style="color:${(r.score_total||0)>=80?'var(--green)':(r.score_total||0)>=60?'var(--gold)':'var(--red)'}">${r.score_total||'—'}/100</span></span>
+        <span>AI <span style="color:${aiCol}">${r.ai_verdict||'—'}</span></span>
+        ${r.ai_pattern?`<span style="color:var(--blue)">${r.ai_pattern}</span>`:''}
+      </div>
+      ${r.ai_reasoning?`<div style="color:var(--text-dim);font-size:9px;margin-bottom:6px;line-height:1.5">${r.ai_reasoning}</div>`:''}
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px">OUTCOME:</div>
+      <div class="outcome-btns">${outBtns}</div>
+    </div>
+  </div>`;
+}
+
+async function updateOutcome(id, outcome) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${id}`, {
+      method:'PATCH', headers:{...SB_HDRS,'Prefer':'return=minimal'},
+      body: JSON.stringify({ outcome, outcome_marked_at: new Date().toISOString() })
+    });
+    loadJournal(); loadMiniJournal();
+  } catch(e) { showStatus('Update failed', true); }
+}
+
+// ─────────────────────────────────────────────
+// PERFORMANCE TAB
+// ─────────────────────────────────────────────
+async function loadPerformance() {
+  const el = document.getElementById('perf-content');
+  const rows = await fetchTrades();
+  const resolved = rows.filter(r => r.outcome && r.outcome !== 'PENDING');
+  if (resolved.length < 3) {
+    el.innerHTML = '<div class="card" style="text-align:center;padding:40px"><div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Save at least 3 completed trades to see statistics.</div></div>';
+    return;
+  }
+
+  const wins = resolved.filter(r => pnlOf(r) > 0).length;
+  const pnl  = resolved.reduce((a,r) => a+(pnlOf(r)||0), 0);
+  const wr   = Math.round(wins/resolved.length*100);
+  const avg  = pnl/resolved.length;
+
+  // By conviction tier
+  const byConv = {'HIGH':     {w:0,t:0}, 'MODERATE': {w:0,t:0}, 'LOW': {w:0,t:0}};
+  resolved.forEach(r => {
+    const k = r.conviction || 'LOW';
+    if (!byConv[k]) byConv[k] = {w:0,t:0};
+    byConv[k].t++;
+    if (pnlOf(r) > 0) byConv[k].w++;
+  });
+
+  // By asset
+  const byAsset = {};
+  resolved.forEach(r => {
+    const s = r.symbol || 'Unknown';
+    if (!byAsset[s]) byAsset[s] = {w:0,t:0};
+    byAsset[s].t++;
+    if (pnlOf(r) > 0) byAsset[s].w++;
+  });
+
+  // By session
+  const bySession = {};
+  resolved.forEach(r => {
+    const s = r.session || 'Unknown';
+    if (!bySession[s]) bySession[s] = {w:0,t:0};
+    bySession[s].t++;
+    if (pnlOf(r) > 0) bySession[s].w++;
+  });
+
+  const barRow = (label, w, t) => {
+    if (!t) return '';
+    const pct = Math.round(w/t*100);
+    const cls = pct>=60?'g':pct<40?'r':'';
+    return `<div class="bar-row"><span class="bar-lbl">${label}</span><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div><span class="bar-pct">${pct}%</span></div>`;
+  };
+
+  el.innerHTML = `
+    <div class="perf-grid">
+      <div class="perf-card"><div class="perf-label">Total Trades</div><div class="perf-val">${resolved.length}</div><div class="perf-sub">with outcomes</div></div>
+      <div class="perf-card"><div class="perf-label">Win Rate</div><div class="perf-val ${wr>=50?'pos':'neg'}">${wr}%</div><div class="perf-sub">${wins}W / ${resolved.length-wins}L</div></div>
+      <div class="perf-card"><div class="perf-label">Total P&amp;L</div><div class="perf-val ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':''}${pnl.toFixed(1)}R</div><div class="perf-sub">in R-multiples</div></div>
+      <div class="perf-card"><div class="perf-label">Avg / Trade</div><div class="perf-val ${avg>=0?'pos':'neg'}">${avg>=0?'+':''}${avg.toFixed(2)}R</div><div class="perf-sub">${avg>0.3?'Edge confirmed ✓':'Build more data'}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div class="card"><div class="card-header"><div class="card-title">BY CONVICTION</div></div><div class="bar-chart">${Object.entries(byConv).map(([s,v])=>barRow(s,v.w,v.t)).join('')}</div></div>
+      <div class="card"><div class="card-header"><div class="card-title">BY ASSET</div></div><div class="bar-chart">${Object.entries(byAsset).map(([s,v])=>barRow(s,v.w,v.t)).join('')}</div></div>
+      <div class="card"><div class="card-header"><div class="card-title">BY SESSION</div></div><div class="bar-chart">${Object.entries(bySession).map(([s,v])=>barRow(s,v.w,v.t)).join('')}</div></div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────
+// INSIGHTS TAB
+// ─────────────────────────────────────────────
+async function loadInsights() {
+  const el = document.getElementById('insights-content');
+  const rows = await fetchTrades();
+  const resolved = rows.filter(r => r.outcome && r.outcome !== 'PENDING');
+
+  if (resolved.length < 5) {
+    el.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:30px;text-align:center">${resolved.length}/5 trades completed. ${5-resolved.length} more to unlock insights.</div>`;
+    return;
+  }
+
+  el.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:20px;text-align:center">⟳ Analysing your trade patterns...</div>';
+
+  const wins = resolved.filter(r => pnlOf(r) > 0).length;
+  const pnl  = resolved.reduce((a,r) => a+(pnlOf(r)||0), 0);
+  const wr   = Math.round(wins/resolved.length*100);
+
+  const summary = resolved.map(r => {
+    const sb = r.score_breakdown || {};
+    return `${r.created_at?.split('T')[0]} | ${r.symbol} ${r.direction} ${r.timeframe} | Score: ${r.score_total} | Pattern: ${r.ai_pattern||'?'} | Session: ${r.session||'?'} | Outcome: ${r.outcome} | P&L: ${pnlOf(r)||0}R`;
+  }).join('\n');
+
+  const prompt = `You are analyzing a trader's performance data from a pure price action trading system.
+
+TRADE HISTORY (${resolved.length} completed trades):
+${summary}
+
+OVERALL: Win rate ${wr}%, Total P&L ${pnl.toFixed(1)}R
+
+Analyse specifically what patterns, sessions, conviction levels, and setups have been working or failing for this trader. Generate 4-5 sharp, actionable insights.
+
+Reply ONLY in this JSON:
+{"insights":[{"type":"EDGE|WARNING|PATTERN|TIP","text":"specific insight"}]}`;
+
+  try {
+    const res = await fetch(AI_PROXY, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:700, messages:[{role:'user',content:prompt}] })
+    });
+    const data = await res.json();
+    const raw  = data.content?.find(b=>b.type==='text')?.text || '';
+    const ai   = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    el.innerHTML = ai.insights.map(i => `
+      <div class="insight-card ${i.type}">
+        <span class="insight-tag">${i.type}</span>
+        <div class="insight-body">${i.text}</div>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:20px">⚠ Failed: ${e.message}</div>`;
+  }
+}
+
+// ─────────────────────────────────────────────
+// LEARNING CONTEXT (injected into prompts)
+// ─────────────────────────────────────────────
+async function buildLearningContext() {
+  const rows = await fetchTrades();
+  const resolved = rows.filter(r => r.outcome && r.outcome !== 'PENDING');
+  if (resolved.length < 4) return '';
+
+  const wins = resolved.filter(r => pnlOf(r) > 0).length;
+  const pnl  = resolved.reduce((a,r) => a+(pnlOf(r)||0), 0);
+  const wr   = Math.round(wins/resolved.length*100);
+
+  // Conviction breakdown
+  const byConv = {};
+  resolved.forEach(r => {
+    const k = r.conviction || 'LOW';
+    if (!byConv[k]) byConv[k] = {w:0,t:0};
+    byConv[k].t++;
+    if (pnlOf(r)>0) byConv[k].w++;
+  });
+  const convStr = Object.entries(byConv).map(([k,v]) => `${k}: ${Math.round(v.w/v.t*100)}% WR (${v.t} trades)`).join(', ');
+
+  // Session breakdown
+  const bySess = {};
+  resolved.forEach(r => {
+    const s = r.session||'Unknown';
+    if (!bySess[s]) bySess[s]={w:0,t:0};
+    bySess[s].t++; if (pnlOf(r)>0) bySess[s].w++;
+  });
+  const sessStr = Object.entries(bySess).map(([s,v]) => `${s}: ${Math.round(v.w/v.t*100)}% WR`).join(', ');
+
+  return `${resolved.length} completed trades, ${wr}% WR overall, ${pnl>=0?'+':''}${pnl.toFixed(1)}R total.\nConviction tiers: ${convStr}\nSessions: ${sessStr}`;
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    document.getElementById('loading').classList.add('hidden');
+    setTimeout(() => { document.getElementById('loading').style.display = 'none'; }, 400);
+    showStatus('📸 Upload your entry chart (and optionally an HTF chart) then click Analyze.', false);
+  }, 1000);
+  loadMiniJournal();
+});
+</script>
+</body>
+</html>
