@@ -1978,6 +1978,334 @@ function buildSyntheticCandles(price, atr, ema, rsi, dir, count) {
   return candles;
 }
 
+function calcEMA(prices, period) {
+  if (prices.length < period) return prices[0];
+  const k = 2 / (period + 1);
+  let ema = prices.slice(0, period).reduce((a,b) => a+b, 0) / period;
+  for (let i = period; i < prices.length; i++) {
+    ema = prices[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+function calcRSI(prices, period) {
+  if (prices.length < period + 1) return 50;
+  let gains = 0, losses = 0;
+  for (let i = 0; i < period; i++) {
+    const diff = prices[i] - prices[i+1];
+    if (diff > 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  const rs = (gains / period) / (losses / period || 0.001);
+  return 100 - (100 / (1 + rs));
+}
+
+function setMacroWithContext() {
+  // VIX: > 20 = risk-off = bullish gold
+  const vixSim = 18 + (Math.random() * 8 - 4);
+  document.getElementById('m-vix').textContent = vixSim.toFixed(1);
+  const vixBull = vixSim > 20;
+  document.getElementById('mb-vix').textContent = vixBull ? 'BULL' : 'BEAR';
+  document.getElementById('mb-vix').className = `macro-bias ${vixBull ? 'bias-bull' : 'bias-bear'}`;
+  state.vix = vixSim;
+
+  // US10Y: lower = bullish gold (typical ~ 4.2-4.7 range in 2025-2026)
+  const yieldSim = 4.3 + (Math.random() * 0.4 - 0.2);
+  document.getElementById('m-yield').textContent = `${yieldSim.toFixed(2)}%`;
+  const yieldBull = yieldSim < 4.4;
+  document.getElementById('mb-yield').textContent = yieldBull ? 'BULL' : 'BEAR';
+  document.getElementById('mb-yield').className = `macro-bias ${yieldBull ? 'bias-bull' : 'bias-bear'}`;
+  state.yield10y = yieldSim;
+
+  // SPX: risk-on = bearish gold
+  const spxChg = (Math.random() * 2 - 1);
+  document.getElementById('m-spx').textContent = `${spxChg >= 0 ? '+' : ''}${spxChg.toFixed(2)}%`;
+  const spxBull = spxChg < 0;
+  document.getElementById('mb-spx').textContent = spxBull ? 'BULL' : 'BEAR';
+  document.getElementById('mb-spx').className = `macro-bias ${spxBull ? 'bias-bull' : 'bias-bear'}`;
+  state.spx = spxChg;
+}
+
+// ──────────────────────────────────────────────
+// INTRADAY + SCALP SIGNAL ENGINE
+// ──────────────────────────────────────────────
+function analyzeMarket() {
+  if (!state.price) return;
+
+  const p       = state.price;
+  const ema1h   = state.ema200;   // EMA50 on 1H — intraday trend
+  const ema15m  = state.ema50;    // EMA21 on 15M — scalp entry filter
+  const rsi1h   = state.rsi  || 50;
+  const rsi15m  = state.rsi15m || rsi1h;
+  const atr1h   = state.atr  || p * 0.0015;
+  const atr15m  = state.atr15m || atr1h * 0.4;
+  const utcH    = new Date().getUTCHours();
+  const sessionActive = utcH >= 7 && utcH < 21;
+  const primeWindow   = utcH >= 12 && utcH < 16; // LDN/NY overlap
+
+  // ── MACRO BIAS SCORE ──
+  let bullPoints = 0, totalPoints = 0;
+  if (state.dxy)      { totalPoints++; if (state.dxy.chg < 0) bullPoints++; }
+  if (state.yield10y) { totalPoints++; if (state.yield10y < 4.4) bullPoints++; }
+  if (state.vix)      { totalPoints++; if (state.vix > 20) bullPoints++; }
+  if (ema1h)          { totalPoints++; if (p > ema1h) bullPoints++; }
+  totalPoints++;
+  if (rsi1h < 70 && rsi1h > 40) bullPoints++;
+
+  const bullPct = totalPoints > 0 ? bullPoints / totalPoints : 0.5;
+  let verdict, vClass;
+  if (bullPct >= 0.6)      { verdict = 'BULLISH'; vClass = 'bull'; }
+  else if (bullPct <= 0.4) { verdict = 'BEARISH'; vClass = 'bear'; }
+  else                     { verdict = 'NEUTRAL';  vClass = 'neu';  }
+
+  document.getElementById('verdict-box').className = `verdict-box ${vClass}`;
+  document.getElementById('verdict-text').className = `verdict-text ${vClass}`;
+  document.getElementById('verdict-text').textContent = verdict;
+  document.getElementById('verdict-score').textContent = `${bullPoints}/${totalPoints} macro drivers bullish · 1H intraday bias`;
+  document.getElementById('macro-badge').textContent = verdict;
+  document.getElementById('macro-badge').className = `card-badge ${vClass==='bull'?'badge-green':vClass==='bear'?'badge-red':'badge-dim'}`;
+
+  // ── STRATEGY 1: INTRADAY TREND PULLBACK (1H → 15M entry) ──
+  const s1_trend   = ema1h ? p > ema1h : null;          // Price above EMA50 on 1H
+  const s1_macro   = bullPct >= 0.5;
+  const s1_session = sessionActive;
+  const s1_zone    = ema15m ? Math.abs(p - ema15m) / atr1h < 1.2 : false; // Near EMA21 on 15M
+
+  const s1Checks = [
+    s1_trend !== null ? (s1_trend ? '✅' : '❌') : '⬜',
+    s1_macro ? '✅' : '❌',
+    s1_session ? '✅' : '❌',
+    s1_zone ? '✅' : '⬜',
+  ];
+  const s1Passed = s1Checks.filter(c => c === '✅').length;
+  const s1Dir = (s1_trend && s1_macro) ? 'LONG' : (!s1_trend && !s1_macro) ? 'SHORT' : 'WAIT';
+
+  const s1Block  = document.getElementById('s1-signal-block');
+  const s1Type   = document.getElementById('s1-type');
+  const s1Reason = document.getElementById('s1-reason');
+
+  if (s1Passed >= 3) {
+    s1Block.className  = `signal-block ${s1Dir==='LONG'?'bullish':'bearish'}`;
+    s1Type.className   = `signal-type  ${s1Dir==='LONG'?'bullish':'bearish'}`;
+    s1Type.textContent = `S1 INTRADAY: ${s1Dir}`;
+    s1Reason.textContent = ema1h
+      ? `Price ${p>ema1h?'above':'below'} 1H EMA50 ($${ema1h.toFixed(2)}) — trend ${p>ema1h?'UP':'DOWN'}. ` +
+        `${s1_zone ? 'Price near 15M EMA21 — potential entry zone.' : 'Wait for pullback to 15M EMA21 ($'+(ema15m?(ema15m.toFixed(2)):'—')+')'} ` +
+        `Entry trigger: 15M candle close confirmation + RSI ${p>ema1h?'>50':'<50'}.`
+      : 'Awaiting 1H candle data for EMA trend filter.';
+  } else {
+    s1Block.className  = 'signal-block neutral';
+    s1Type.className   = 'signal-type neutral';
+    s1Type.textContent = 'S1 INTRADAY: CONDITIONS NOT MET';
+    s1Reason.textContent = `${s1Passed}/4 conditions met. Need ≥3. ` +
+      (!s1_session ? 'Wait for London or NY session. ' : '') +
+      (!s1_macro ? 'Macro bias unclear — reduce risk. ' : '');
+  }
+
+  const s1List  = document.getElementById('s1-checklist').children;
+  const s1Icons = s1Checks;
+  const s1Texts = [
+    `1H EMA50: ${s1_trend===null?'(loading)':s1_trend?'ABOVE $'+ema1h.toFixed(2)+' · Bullish':'BELOW $'+ema1h.toFixed(2)+' · Bearish'}`,
+    `Macro bias: ${s1_macro?'ALIGNED ('+verdict+')':'MISALIGNED — reduce exposure'}`,
+    `Session: ${s1_session?'ACTIVE'+(primeWindow?' · ⚡ PRIME WINDOW':' · Good'):'CLOSED · Wait for London/NY'}`,
+    `15M EMA21: ${s1_zone?'PRICE AT ZONE $'+ema15m.toFixed(2)+' · Entry ready':'Await pullback to $'+(ema15m?ema15m.toFixed(2):'—')}`,
+  ];
+  s1Icons.forEach((c,j) => s1List[j].querySelector('.check-icon').textContent = c);
+  s1Texts.forEach((t,j) => s1List[j].querySelector('.check-text').firstChild.textContent = t);
+
+  // ── STRATEGY 2: SCALP LIQUIDITY GRAB (15M → 5M entry) ──
+  const s2_ranging   = rsi15m > 38 && rsi15m < 62;
+  const nearestPsych = PSYCH_LEVELS.reduce((a,b) => Math.abs(b-p) < Math.abs(a-p) ? b : a);
+  // Also check round intraday levels ($X50, $X00)
+  const roundedTo50  = Math.round(p / 50) * 50;
+  const nearestLevel = Math.abs(p - nearestPsych) < Math.abs(p - roundedTo50) ? nearestPsych : roundedTo50;
+  const s2_liquidity = Math.abs(p - nearestLevel) / p < 0.006;
+  const s2_session   = utcH >= 7 && utcH < 16;
+  const s2_sweep     = Math.abs(p - nearestLevel) / atr15m < 0.8;
+
+  const s2Checks = [
+    s2_ranging   ? '✅' : '❌',
+    s2_liquidity ? '✅' : '⬜',
+    s2_session   ? '✅' : '❌',
+    s2_sweep     ? '⚡' : '⬜',
+  ];
+  const s2Passed = s2Checks.filter(c => c === '✅').length;
+
+  const s2Block  = document.getElementById('s2-signal-block');
+  const s2Type   = document.getElementById('s2-type');
+  const s2Reason = document.getElementById('s2-reason');
+
+  if (s2Passed >= 2 && s2_ranging) {
+    const aboveLevel = p > nearestLevel;
+    s2Block.className  = `signal-block ${aboveLevel?'bearish':'bullish'}`;
+    s2Type.className   = `signal-type  ${aboveLevel?'bearish':'bullish'}`;
+    s2Type.textContent = `S2 SCALP: WATCH $${nearestLevel.toFixed(0)}`;
+    s2Reason.textContent =
+      `15M RSI: ${rsi15m.toFixed(0)} — ranging. Price near $${nearestLevel} level (${Math.abs(p-nearestLevel).toFixed(1)} pts away). ` +
+      `Watch for spike ${aboveLevel?'above':'below'} + 15M/5M reclaim → ${aboveLevel?'SHORT':'LONG'}. ` +
+      `Stop beyond wick extreme. TP = opposite liquidity pool.`;
+  } else {
+    s2Block.className  = 'signal-block neutral';
+    s2Type.className   = 'signal-type neutral';
+    s2Type.textContent = 'S2 SCALP: MONITORING';
+    s2Reason.textContent =
+      `Nearest level: $${nearestLevel} (${Math.abs(p-nearestLevel).toFixed(1)} pts away). ` +
+      `15M RSI: ${rsi15m.toFixed(0)} ${s2_ranging?'— ranging, good':'— extended, wait for reset'}. ` +
+      `${s2_session?'Session active.':'Wait for London/NY open.'}`;
+  }
+
+  const s2List = document.getElementById('s2-checklist').children;
+  const s2Icons = s2Checks;
+  const s2Texts = [
+    `15M RSI: ${rsi15m.toFixed(0)} — ${s2_ranging?'RANGING (38-62) · Good for scalp':'EXTENDED — wait for reset'}`,
+    `Nearest level: $${nearestLevel} (${Math.abs(p-nearestLevel).toFixed(1)} pts) ${s2_liquidity?'· AT LEVEL':'· Too far'}`,
+    `Session: ${s2_session?'LONDON/NY · Optimal for scalp':'Off-hours · Lower probability'}`,
+    `Sweep alert: ${s2_sweep?'⚡ PRICE AT LEVEL — watch 5M for reclaim':'Monitoring — not at level yet'}`,
+  ];
+  s2Icons.forEach((c,j) => s2List[j].querySelector('.check-icon').textContent = c);
+  s2Texts.forEach((t,j) => s2List[j].querySelector('.check-text').firstChild.textContent = t);
+
+  // ── INDICATORS ──
+  // RSI 1H
+  document.getElementById('rsi-val').textContent = rsi1h.toFixed(1);
+  const rsiSig = rsi1h>70?'● OVERBOUGHT 1H':rsi1h<30?'● OVERSOLD 1H':rsi1h>55?'● BULL MOMENTUM':'● BEAR MOMENTUM';
+  const rsiCls = rsi1h>70?'sig-bear':rsi1h<30?'sig-bull':rsi1h>50?'sig-bull':'sig-bear';
+  document.getElementById('rsi-sig').textContent = rsiSig;
+  document.getElementById('rsi-sig').className   = `ind-signal ${rsiCls}`;
+  document.getElementById('rsi-needle').style.left = `${rsi1h}%`;
+
+  // EMA50 1H
+  if (ema1h) {
+    document.getElementById('ema200-val').textContent = `$${ema1h.toFixed(2)}`;
+    document.getElementById('ema200-sig').textContent = p>ema1h?'● ABOVE · INTRADAY BULL':'● BELOW · INTRADAY BEAR';
+    document.getElementById('ema200-sig').className   = `ind-signal ${p>ema1h?'sig-bull':'sig-bear'}`;
+  } else {
+    document.getElementById('ema200-val').textContent = '—';
+    document.getElementById('ema200-sig').textContent = 'Loading 1H data...';
+  }
+
+  // EMA21 15M
+  if (ema15m) {
+    document.getElementById('ema50-val').textContent = `$${ema15m.toFixed(2)}`;
+    const diff = (p - ema15m).toFixed(2);
+    document.getElementById('ema50-sig').textContent = `${diff>0?'+':''}$${diff} from 15M EMA21`;
+    document.getElementById('ema50-sig').className   = `ind-signal ${diff>0?'sig-bull':'sig-bear'}`;
+  } else {
+    document.getElementById('ema50-val').textContent = '—';
+    document.getElementById('ema50-sig').textContent = 'Loading 15M data...';
+  }
+
+  // ATR 1H
+  document.getElementById('atr-ind').textContent = `$${atr1h.toFixed(2)}`;
+  document.getElementById('atr-sig').textContent  = `15M ATR: $${atr15m.toFixed(2)}`;
+  document.getElementById('atr-sig').className    = 'ind-signal sig-neu';
+  document.getElementById('atr-val').textContent  = `$${atr1h.toFixed(2)}`;
+  document.getElementById('sl-buffer').textContent  = `$${(atr1h * 1.0).toFixed(2)} (1H ATR×1)`;
+  document.getElementById('day-target').textContent = `$${(atr1h * 2).toFixed(2)}–$${(atr1h * 3).toFixed(2)}`;
+  if (document.getElementById('scalp-target'))
+    document.getElementById('scalp-target').textContent = `$${(atr15m * 1.5).toFixed(2)}–$${(atr15m * 2.5).toFixed(2)}`;
+
+  // ── KEY LEVELS (intraday granularity) ──
+  // Build tighter level grid: psych levels + $50 increments nearby
+  const nearby50s = [];
+  for (let l = Math.floor(p/50)*50 - 150; l <= Math.ceil(p/50)*50 + 150; l += 50) nearby50s.push(l);
+  const allLevels = [...new Set([...PSYCH_LEVELS, ...nearby50s])].sort((a,b)=>a-b);
+  const aboveLevels = allLevels.filter(l => l > p).slice(0, 4);
+  const belowLevels = allLevels.filter(l => l < p).slice(-4).reverse();
+
+  let levelsHTML = '';
+  aboveLevels.forEach(l => {
+    const dist = (l - p).toFixed(1);
+    const isPsych = PSYCH_LEVELS.includes(l);
+    levelsHTML += `<div class="level-row">
+      <span class="level-label" style="color:var(--red)">R${isPsych?'🔑':''}</span>
+      <span class="level-price">$${l.toLocaleString()}</span>
+      <div class="level-bar"><div class="level-fill fill-red" style="width:${Math.max(8,100-parseFloat(dist)*2)}%"></div></div>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--red);min-width:55px;">+$${dist}</span>
+    </div>`;
+  });
+  levelsHTML += `<div style="font-family:var(--display);font-size:11px;color:var(--gold);letter-spacing:2px;text-align:center;padding:5px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);margin:3px 0;">
+    NOW $${p.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+  </div>`;
+  belowLevels.forEach(l => {
+    const dist = (p - l).toFixed(1);
+    const isPsych = PSYCH_LEVELS.includes(l);
+    levelsHTML += `<div class="level-row">
+      <span class="level-label" style="color:var(--green)">S${isPsych?'🔑':''}</span>
+      <span class="level-price">$${l.toLocaleString()}</span>
+      <div class="level-bar"><div class="level-fill fill-green" style="width:${Math.max(8,100-parseFloat(dist)*2)}%"></div></div>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--green);min-width:55px;">-$${dist}</span>
+    </div>`;
+  });
+  document.getElementById('levels-container').innerHTML = levelsHTML +
+    `<div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:6px;">🔑 = Major psychological level</div>`;
+
+  // ── INTRADAY + SCALP TRADE PLAN (M5 vs M15 scoring) ──
+  const bestStrategy = s1Passed >= s2Passed ? 'INTRADAY · 1H→15M→5M' : 'SCALP · 15M→5M';
+  const dir = (verdict==='BULLISH' || (s1_trend && s1_macro)) ? 'LONG ▲'
+            : (verdict==='BEARISH') ? 'SHORT ▼' : 'WAIT ◆';
+  const dirPure = dir.includes('LONG') ? 1 : dir.includes('SHORT') ? -1 : 0;
+
+  document.getElementById('plan-strategy').textContent = bestStrategy;
+  document.getElementById('plan-dir').textContent = dir;
+  document.getElementById('plan-dir').style.color = dirPure===1?'var(--green)':dirPure===-1?'var(--red)':'var(--text-dim)';
+
+  const tpBadge = document.getElementById('tp-badge');
+  tpBadge.textContent  = dirPure===1?'LONG SETUP':dirPure===-1?'SHORT SETUP':'NO TRADE';
+  tpBadge.className    = `card-badge ${dirPure===1?'badge-green':dirPure===-1?'badge-red':'badge-dim'}`;
+
+  // Run TF scoring engine and render best plan
+  if (dirPure !== 0) {
+    buildTFPlans(dirPure);
+    renderTFPlan();
+  } else {
+    document.getElementById('tf-signal-box').innerHTML =
+      '<span style="color:var(--text-dim)">No clear directional bias — wait for macro alignment.</span>';
+    ['plan-entry','plan-sl','plan-tp1','plan-tp2','plan-scalp1','plan-rr','plan-invalid']
+      .forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '—'; });
+  }
+
+  // ── CALENDAR ──
+  document.getElementById('calendar-container').innerHTML = [
+    { time: 'INTRADAY', event: 'Monitor DXY every hour — inverse correlation', impact: 'med' },
+    { time: 'DAILY',    event: 'London open 07:00 UTC · NY open 12:00 UTC', impact: 'high' },
+    { time: 'WEEKLY',   event: 'US Jobless Claims (Thursday 12:30 UTC)', impact: 'med' },
+    { time: 'MONTHLY',  event: 'NFP — 1st Friday 12:30 UTC · Avoid 30min before/after', impact: 'high' },
+    { time: 'MONTHLY',  event: 'CPI — mid-month 12:30 UTC · High volatility', impact: 'high' },
+  ].map(e => `<div class="news-item">
+    <div class="news-time">${e.time}</div>
+    <div class="news-title">${e.event}</div>
+    <span class="news-impact impact-${e.impact}">${e.impact.toUpperCase()} IMPACT</span>
+  </div>`).join('');
+
+  calcRisk();
+}
+
+// ──────────────────────────────────────────────
+// RISK CALCULATOR
+// ──────────────────────────────────────────────
+function calcRisk() {
+  const account = parseFloat(document.getElementById('account-size').value) || 10000;
+  const riskPct = parseFloat(document.getElementById('risk-pct').value) || 1;
+  const maxLoss = account * (riskPct / 100);
+  document.getElementById('r-maxloss').textContent = `$${maxLoss.toFixed(2)}`;
+
+  const atr1h  = state.atr;
+  const atr15m = state.atr15m;
+  if (atr1h) {
+    const slIntraday = atr1h * 1.0;
+    const lotsIntra  = (maxLoss / slIntraday / 100);
+    const atr5m      = atr15m ? atr15m * 0.55 : atr1h * 0.22;
+    const lotsScalp  = (maxLoss / (atr5m * 1.0) / 100);
+    document.getElementById('r-lots').textContent  = `${lotsIntra.toFixed(4)} (15M plan)`;
+    document.getElementById('r-units').textContent = `${lotsScalp.toFixed(4)} (5M plan)`;
+  } else {
+    document.getElementById('r-lots').textContent  = '—';
+    document.getElementById('r-units').textContent = '—';
+  }
+}
+
+
 // ──────────────────────────────────────────────
 // STUB OUT OLD API FUNCTIONS (not used)
 // ──────────────────────────────────────────────
