@@ -594,7 +594,7 @@ Add these fields to the JSON:
       if (logged && logged[0]) tradeId = logged[0].id;
     } catch(e) { console.warn('Log failed:', e); }
 
-    renderResults(r, tradeId);
+    renderResults(r, isConfirmedSignal ? tradeId : null);
 
   } catch(e) {
     clearInterval(loadInt);
