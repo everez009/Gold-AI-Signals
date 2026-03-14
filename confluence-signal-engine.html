@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMA · VWAP Signal Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #07080a;
+  --surface:   #0d0f13;
+  --surface2:  #12151b;
+  --surface3:  #181c25;
+  --border:    #1e2535;
+  --border2:   #252e42;
+
+  --accent:    #7c6aff;
+  --accent2:   #5b4bd4;
+  --accent-glow: rgba(124,106,255,0.18);
+  --accent-dim:  rgba(124,106,255,0.08);
+
+  --bull:      #19e37a;
+  --bull-dim:  rgba(25,227,122,0.10);
+  --bull-glow: rgba(25,227,122,0.25);
+  --bear:      #ff4466;
+  --bear-dim:  rgba(255,68,102,0.10);
+  --bear-glow: rgba(255,68,102,0.25);
+  --warn:      #f5a623;
+  --warn-dim:  rgba(245,166,35,0.12);
+  --neutral:   #4a5568;
+
+  --text:      #c8d0e0;
+  --text-dim:  #4a5568;
+  --text-mid:  #6b7a99;
+  --text-bright:#e8ecf5;
+
+  --mono:  'Space Mono', monospace;
+  --display: 'Syne', sans-serif;
+  --body:  'DM Sans', sans-serif;
+
+  --r2: 4px;
+  --r4: 8px;
+  --r6: 12px;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 14px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* — noise grain overlay — */
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events:none;
+  z-index:999;
+  opacity:0.6;
+}
+
+/* — subtle dot grid — */
+.grid-bg {
+  position:fixed; inset:0;
+  background-image: radial-gradient(rgba(124,106,255,0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events:none;
+}
+
+.wrap { max-width:1360px; margin:0 auto; padding:18px 20px; }
+
+/* ════════════════════════════
+   HEADER
+════════════════════════════ */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px; margin-bottom: 18px;
+}
+.logo {
+  display:flex; align-items:center; gap:12px;
+}
+.logo-mark {
+  width:40px; height:40px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: var(--r4);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 0 20px var(--accent-glow);
+  font-family: var(--display);
+  font-weight:800; font-size:16px; color:#fff;
+}
+.logo-text h1 {
+  font-family: var(--display); font-weight:800;
+  font-size: 20px; letter-spacing: 1px; color: var(--text-bright);
+}
+.logo-text p {
+  font-family: var(--mono); font-size:9px;
+  color: var(--text-dim); letter-spacing: 2px; text-transform:uppercase;
+}
+.header-right { display:flex; align-items:center; gap:14px; }
+#clock {
+  font-family: var(--mono); font-size:11px;
+  color: var(--text-dim); letter-spacing:1px;
+}
+.live-dot-wrap {
+  display:flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:10px; color: var(--bull); letter-spacing:1px;
+}
+.pulse {
+  width:7px; height:7px; border-radius:50%;
+  background: var(--bull);
+  animation: blink 1.5s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
+
+.btn {
+  font-family:var(--mono); font-size:10px; letter-spacing:1px;
+  text-transform:uppercase; padding: 7px 16px; border-radius: var(--r2);
+  cursor:pointer; transition:all .2s; border:1px solid;
+}
+.btn-primary {
+  background: var(--accent-dim); border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-primary:hover { background: rgba(124,106,255,0.2); }
+.btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-sm { padding:5px 12px; font-size:9px; }
+
+/* ════════════════════════════
+   TABS
+════════════════════════════ */
+.tab-bar {
+  display:flex; gap:4px; margin-bottom:18px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  font-family:var(--mono); font-size:10px; letter-spacing:1.5px;
+  text-transform:uppercase; padding:9px 18px; cursor:pointer;
+  color:var(--text-dim); border-bottom: 2px solid transparent;
+  margin-bottom:-1px; transition:all .2s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+
+/* ════════════════════════════
+   GRID LAYOUT
+════════════════════════════ */
+.main-grid {
+  display:grid;
+  grid-template-columns: 340px 1fr;
+  gap:16px;
+}
+.col-left { display:flex; flex-direction:column; gap:14px; }
+.col-right { display:flex; flex-direction:column; gap:14px; }
+
+/* ════════════════════════════
+   CARDS
+════════════════════════════ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r6);
+  padding: 16px;
+}
+.card-head {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom: 14px;
+}
+.card-title {
+  font-family: var(--display); font-weight:700; font-size:11px;
+  letter-spacing:2px; text-transform:uppercase; color:var(--text-mid);
+}
+.badge {
+  font-family:var(--mono); font-size:9px; letter-spacing:1px;
+  text-transform:uppercase; padding:3px 8px; border-radius:3px;
+}
+.badge-accent { background: var(--accent-dim); color: var(--accent); border:1px solid var(--accent); }
+.badge-bull   { background: var(--bull-dim); color: var(--bull); }
+.badge-bear   { background: var(--bear-dim); color: var(--bear); }
+.badge-warn   { background: var(--warn-dim); color: var(--warn); }
+.badge-dim    { background: var(--surface3); color: var(--text-dim); }
+
+/* ════════════════════════════
+   SIGNAL MANUAL INPUT PANEL
+════════════════════════════ */
+.input-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:10px;
+}
+.field-wrap { display:flex; flex-direction:column; gap:5px; }
+.field-wrap label {
+  font-family:var(--mono); font-size:9px;
+  color:var(--text-dim); letter-spacing:1.5px; text-transform:uppercase;
+}
+.field-wrap select, .field-wrap input {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r2);
+  color: var(--text);
+  font-family: var(--mono); font-size:11px;
+  padding: 7px 10px;
+  cursor:pointer;
+  appearance:none;
+  -webkit-appearance:none;
+  outline:none; transition: border-color .2s;
+}
+.field-wrap select:focus, .field-wrap input:focus {
+  border-color: var(--accent);
+}
+.field-wrap select option { background: #151820; }
+.field-wrap.full { grid-column: 1/-1; }
+
+/* ════════════════════════════
+   DASHBOARD STATUS TABLE
+════════════════════════════ */
+.dash-table { width:100%; border-collapse:collapse; }
+.dash-table tr { border-bottom: 1px solid var(--border); }
+.dash-table tr:last-child { border-bottom:none; }
+.dash-table td {
+  padding: 9px 8px; font-family:var(--mono); font-size:11px; vertical-align:middle;
+}
+.dash-row-label { color:var(--text-dim); letter-spacing:1px; width:90px; }
+.dash-row-val { color:var(--text-bright); font-weight:700; }
+.dash-row-val.bull  { color: var(--bull); }
+.dash-row-val.bear  { color: var(--bear); }
+.dash-row-val.warn  { color: var(--warn); }
+.dash-row-val.neutral { color: var(--text-dim); }
+
+/* ════════════════════════════
+   CHECKLIST
+════════════════════════════ */
+.checklist { display:flex; flex-direction:column; gap:7px; }
+.check-row {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:9px 12px; border-radius:var(--r4);
+  border:1px solid var(--border); background:var(--surface2);
+  transition: border-color .2s;
+}
+.check-row.pass  { border-color: rgba(25,227,122,0.25); background: rgba(25,227,122,0.04); }
+.check-row.fail  { border-color: rgba(255,68,102,0.25); background: rgba(255,68,102,0.04); }
+.check-row.warn  { border-color: rgba(245,166,35,0.25);  background: rgba(245,166,35,0.04); }
+.check-row.na    { opacity:0.5; }
+.check-icon {
+  font-size:14px; line-height:1; flex-shrink:0; margin-top:1px;
+}
+.check-text {
+  font-size:12px; color: var(--text); line-height:1.3;
+}
+.check-sub {
+  display:block; font-family:var(--mono); font-size:9px;
+  color:var(--text-dim); letter-spacing:0.5px; margin-top:2px;
+}
+
+/* ════════════════════════════
+   DECISION BANNER
+════════════════════════════ */
+.decision-banner {
+  padding: 18px 20px;
+  border-radius: var(--r6); border: 1px solid;
+  display:flex; align-items:center; gap:16px;
+}
+.decision-banner.enter-long  { border-color:var(--bull); background:var(--bull-dim); }
+.decision-banner.enter-short { border-color:var(--bear); background:var(--bear-dim); }
+.decision-banner.wait  { border-color:var(--warn); background:var(--warn-dim); }
+.decision-banner.skip  { border-color:var(--neutral); background:var(--surface2); }
+.decision-banner.idle  { border-color:var(--border2); background:var(--surface2); }
+.decision-icon { font-size:28px; flex-shrink:0; }
+.decision-text h2 {
+  font-family: var(--display); font-weight:800; font-size:22px; letter-spacing:1px;
+}
+.decision-text p {
+  font-size:12px; color:var(--text-mid); margin-top:3px; line-height:1.5;
+}
+.stars { font-size:18px; margin-top:4px; }
+
+/* ════════════════════════════
+   TRADE PARAMS
+════════════════════════════ */
+.params-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:10px;
+}
+.param-box {
+  background:var(--surface2); border:1px solid var(--border2);
+  border-radius:var(--r4); padding:12px;
+  display:flex; flex-direction:column; gap:4px;
+}
+.param-label {
+  font-family:var(--mono); font-size:9px;
+  color:var(--text-dim); letter-spacing:1.5px; text-transform:uppercase;
+}
+.param-val {
+  font-family:var(--mono); font-size:16px;
+  font-weight:700; color:var(--text-bright);
+}
+.param-sub {
+  font-family:var(--mono); font-size:9px; color:var(--text-dim);
+}
+
+/* ════════════════════════════
+   AI PANEL
+════════════════════════════ */
+.ai-panel {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r6);
+  padding:16px; min-height:120px;
+}
+.ai-header {
+  display:flex; align-items:center; gap:10px; margin-bottom:12px;
+}
+.ai-badge {
+  font-family:var(--mono); font-size:9px; letter-spacing:1px;
+  text-transform:uppercase; padding:3px 10px; border-radius:20px; border:1px solid;
+}
+.ai-badge.loading  { border-color:var(--text-dim); color:var(--text-dim); animation: pulse-op 1s ease-in-out infinite; }
+.ai-badge.confirms { border-color:var(--bull); color:var(--bull); background:var(--bull-dim); }
+.ai-badge.caution  { border-color:var(--warn); color:var(--warn); background:var(--warn-dim); }
+.ai-badge.conflicts{ border-color:var(--bear); color:var(--bear); background:var(--bear-dim); }
+.ai-badge.idle     { border-color:var(--border2); color:var(--text-dim); }
+@keyframes pulse-op { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.ai-body { font-size:13px; color:var(--text); line-height:1.6; }
+.ai-pattern {
+  display:inline-block; margin-bottom:8px;
+  background: var(--accent-dim); border:1px solid var(--accent);
+  border-radius:3px; padding:2px 10px;
+  font-family:var(--mono); font-size:10px; color:var(--accent); letter-spacing:0.5px;
+}
+.ai-row-split {
+  display:grid; grid-template-columns:1fr 1fr; gap:12px;
+  margin-top:10px;
+}
+.ai-col-label {
+  font-family:var(--mono); font-size:9px; color:var(--text-dim);
+  letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;
+}
+.ai-col-val { font-size:12px; color:var(--text); }
+.ai-risk-note {
+  margin-top:10px; padding:8px 12px;
+  background:var(--surface3); border-left:2px solid var(--accent);
+  font-size:11px; color:var(--text-dim); border-radius:0 var(--r2) var(--r2) 0;
+}
+
+/* ════════════════════════════
+   VWAP STRETCH METER
+════════════════════════════ */
+.stretch-meter {
+  display:flex; gap:6px; align-items:center;
+}
+.stretch-seg {
+  flex:1; height:6px; border-radius:3px;
+  background: var(--surface3);
+  transition: background .3s;
+}
+.stretch-seg.s0.active { background: var(--bull); box-shadow: 0 0 8px var(--bull-glow); }
+.stretch-seg.s1.active { background: var(--warn); box-shadow: 0 0 8px rgba(245,166,35,0.4); }
+.stretch-seg.s2.active { background: #ff8844; }
+.stretch-seg.s3.active { background: var(--bear); box-shadow: 0 0 8px var(--bear-glow); }
+.stretch-labels {
+  display:flex; justify-content:space-between;
+  font-family:var(--mono); font-size:8px; color:var(--text-dim);
+  letter-spacing:0.5px; margin-top:4px;
+}
+
+/* ════════════════════════════
+   JOURNAL TABLE
+════════════════════════════ */
+.journal-table { width:100%; border-collapse:collapse; }
+.journal-table th {
+  font-family:var(--mono); font-size:9px; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--text-dim);
+  padding:8px 10px; text-align:left;
+  border-bottom:1px solid var(--border2);
+}
+.journal-table td {
+  font-family:var(--mono); font-size:11px; color:var(--text);
+  padding:9px 10px; border-bottom:1px solid var(--border);
+  vertical-align:middle;
+}
+.journal-table tr:hover td { background:var(--surface2); }
+.journal-table tr:last-child td { border-bottom:none; }
+.dir-long  { color:var(--bull); font-weight:700; }
+.dir-short { color:var(--bear); font-weight:700; }
+.outcome-btn {
+  font-family:var(--mono); font-size:9px; padding:3px 9px;
+  border-radius:3px; cursor:pointer; border:1px solid var(--border2);
+  background:var(--surface3); color:var(--text-dim);
+  transition:all .15s;
+}
+.outcome-btn:hover { border-color:var(--accent); color:var(--accent); }
+.outcome-win  { color:var(--bull); border-color:rgba(25,227,122,0.3); }
+.outcome-loss { color:var(--bear); border-color:rgba(255,68,102,0.3); }
+
+.journal-empty {
+  text-align:center; padding:40px; color:var(--text-dim);
+  font-family:var(--mono); font-size:11px; letter-spacing:1px;
+}
+
+/* ════════════════════════════
+   PERFORMANCE
+════════════════════════════ */
+.perf-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:12px;
+  margin-bottom:18px;
+}
+.perf-card {
+  background:var(--surface2); border:1px solid var(--border2);
+  border-radius:var(--r4); padding:14px;
+}
+.perf-label {
+  font-family:var(--mono); font-size:9px; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--text-dim); margin-bottom:6px;
+}
+.perf-val {
+  font-family:var(--display); font-weight:800; font-size:26px;
+  color:var(--text-bright);
+}
+.perf-val.pos { color:var(--bull); }
+.perf-val.neg { color:var(--bear); }
+.perf-sub { font-family:var(--mono); font-size:9px; color:var(--text-dim); margin-top:3px; }
+
+.bar-chart-wrap { display:flex; flex-direction:column; gap:8px; }
+.bar-row {
+  display:grid; grid-template-columns:110px 1fr 45px;
+  align-items:center; gap:10px;
+}
+.bar-row-label { font-family:var(--mono); font-size:9px; color:var(--text-dim); letter-spacing:0.5px; }
+.bar-track {
+  height:8px; background:var(--surface3);
+  border-radius:4px; overflow:hidden;
+}
+.bar-fill {
+  height:100%; border-radius:4px;
+  background: var(--accent);
+  transition: width .5s ease;
+}
+.bar-fill.bull { background: var(--bull); }
+.bar-fill.bear { background: var(--bear); }
+.bar-pct {
+  font-family:var(--mono); font-size:10px; color:var(--text-mid); text-align:right;
+}
+
+/* ════════════════════════════
+   INSIGHTS
+════════════════════════════ */
+.insight-list { display:flex; flex-direction:column; gap:10px; }
+.insight-card {
+  padding:14px; border-radius:var(--r4); border:1px solid;
+  display:flex; gap:12px;
+}
+.insight-card.EDGE    { border-color:rgba(25,227,122,0.2); background:rgba(25,227,122,0.04); }
+.insight-card.WARNING { border-color:rgba(255,68,102,0.2); background:rgba(255,68,102,0.04); }
+.insight-card.PATTERN { border-color:rgba(124,106,255,0.2); background:rgba(124,106,255,0.04); }
+.insight-card.TIP     { border-color:rgba(245,166,35,0.2); background:rgba(245,166,35,0.04); }
+.insight-tag {
+  font-family:var(--mono); font-size:8px; letter-spacing:1.5px;
+  flex-shrink:0; width:60px; padding:4px 0; text-align:center;
+  border-radius:3px; height:fit-content; margin-top:1px;
+}
+.EDGE    .insight-tag { background:var(--bull-dim); color:var(--bull); }
+.WARNING .insight-tag { background:var(--bear-dim); color:var(--bear); }
+.PATTERN .insight-tag { background:var(--accent-dim); color:var(--accent); }
+.TIP     .insight-tag { background:var(--warn-dim); color:var(--warn); }
+.insight-body { font-size:13px; color:var(--text); line-height:1.5; }
+
+/* ════════════════════════════
+   MISC
+════════════════════════════ */
+.sep { height:1px; background:var(--border); margin:14px 0; }
+.loading-shimmer {
+  background: linear-gradient(90deg, var(--surface2) 0%, var(--surface3) 50%, var(--surface2) 100%);
+  background-size:200% 100%; border-radius:4px;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+.toast {
+  position:fixed; bottom:20px; right:20px;
+  background:var(--surface2); border:1px solid var(--border2);
+  border-radius:var(--r4); padding:12px 18px;
+  font-family:var(--mono); font-size:11px; color:var(--text);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  transform:translateY(80px); opacity:0;
+  transition:all .3s; z-index:9999;
+}
+.toast.show { transform:translateY(0); opacity:1; }
+.toast.ok  { border-left:3px solid var(--bull); }
+.toast.err { border-left:3px solid var(--bear); }
+
+.disclaimer {
+  font-family:var(--mono); font-size:9px; color:var(--text-dim);
+  letter-spacing:0.5px; text-align:center;
+  padding:14px; border-top:1px solid var(--border); margin-top:20px; line-height:1.7;
+}
+
+/* modal for outcome */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.75);
+  display:flex; align-items:center; justify-content:center;
+  z-index:1000; opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.modal-overlay.open { opacity:1; pointer-events:all; }
+.modal {
+  background:var(--surface); border:1px solid var(--border2);
+  border-radius:var(--r6); padding:24px; width:420px; max-width:95vw;
+}
+.modal h3 {
+  font-family:var(--display); font-size:16px; font-weight:800;
+  color:var(--text-bright); margin-bottom:14px;
+}
+.modal-btns { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+.outcome-select-btn {
+  font-family:var(--mono); font-size:10px; letter-spacing:1px;
+  padding:8px 14px; border-radius:3px; cursor:pointer; border:1px solid var(--border2);
+  background:var(--surface2); color:var(--text-dim); transition:all .15s;
+}
+.outcome-select-btn:hover { border-color:var(--accent); color:var(--accent); }
+.outcome-select-btn.selected { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+
+/* responsive */
+@media (max-width:900px) {
+  .main-grid { grid-template-columns:1fr; }
+  .params-grid { grid-template-columns:repeat(2,1fr); }
+  .perf-grid { grid-template-columns:repeat(2,1fr); }
+}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<div class="wrap">
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark">EV</div>
+      <div class="logo-text">
+        <h1>EMA · VWAP SIGNAL ENGINE</h1>
+        <p>EMA 9/21/50 · VWAP Bands · MACD · RSI · FVG · First Candle H/L</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="live-dot-wrap">
+        <div class="pulse"></div>
+        <span>LIVE</span>
+      </div>
+      <span id="clock">—</span>
+      <button class="btn btn-primary" id="run-btn" onclick="runAnalysis()">▶ ANALYZE</button>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <div class="tab-bar">
+    <div class="tab active" onclick="switchTab('analyze',this)">ANALYZE</div>
+    <div class="tab" onclick="switchTab('journal',this)">JOURNAL</div>
+    <div class="tab" onclick="switchTab('performance',this)">PERFORMANCE</div>
+    <div class="tab" onclick="switchTab('insights',this)">INSIGHTS</div>
+  </div>
+
+  <!-- ══ TAB: ANALYZE ══ -->
+  <div class="tab-panel active" id="tab-analyze">
+    <div class="main-grid">
+
+      <!-- LEFT COL -->
+      <div class="col-left">
+        <!-- Input Panel -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Signal Input</span>
+            <span class="badge badge-accent">MANUAL ENTRY</span>
+          </div>
+          <div class="input-grid">
+            <div class="field-wrap">
+              <label>Asset</label>
+              <select id="inp-asset">
+                <option value="XAUUSD">XAUUSD (Gold)</option>
+                <option value="EURUSD">EURUSD</option>
+                <option value="GBPUSD">GBPUSD</option>
+                <option value="USDJPY">USDJPY</option>
+                <option value="BTCUSD">BTCUSD</option>
+                <option value="SPX">SPX</option>
+                <option value="NAS100">NAS100</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>Timeframe</label>
+              <select id="inp-tf">
+                <option value="1M">1M</option>
+                <option value="5M">5M</option>
+                <option value="15M" selected>15M</option>
+                <option value="1H">1H</option>
+                <option value="4H">4H</option>
+                <option value="Daily">Daily</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>Session</label>
+              <select id="inp-session">
+                <option value="London">London</option>
+                <option value="New York">New York</option>
+                <option value="Asian">Asian</option>
+                <option value="Pre-Market">Pre-Market</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>Signal Type</label>
+              <select id="inp-signal">
+                <option value="BUY">BUY</option>
+                <option value="SELL">SELL</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <!-- Dashboard Values -->
+          <div class="card-title" style="margin-bottom:10px">Dashboard Values (from TradingView)</div>
+          <div class="input-grid">
+            <div class="field-wrap">
+              <label>Trend (Dashboard)</label>
+              <select id="inp-trend">
+                <option value="BULLISH">BULLISH</option>
+                <option value="BEARISH">BEARISH</option>
+                <option value="NEUTRAL">NEUTRAL</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>EMA Alignment</label>
+              <select id="inp-ema">
+                <option value="EMA9 > EMA21">EMA9 &gt; EMA21 (Bull)</option>
+                <option value="EMA9 < EMA21">EMA9 &lt; EMA21 (Bear)</option>
+                <option value="MIXED">MIXED / Crossing</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>MACD</label>
+              <select id="inp-macd">
+                <option value="BULL">BULL</option>
+                <option value="BEAR">BEAR</option>
+                <option value="NEUTRAL">NEUTRAL</option>
+                <option value="OFF">OFF</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>RSI Value</label>
+              <input type="number" id="inp-rsi" min="1" max="99" value="55" placeholder="e.g. 58">
+            </div>
+            <div class="field-wrap">
+              <label>VWAP Position</label>
+              <select id="inp-vwap-pos">
+                <option value="Above">Above VWAP</option>
+                <option value="Below">Below VWAP</option>
+                <option value="At">At VWAP</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>VWAP Stretch</label>
+              <select id="inp-vwap-stretch">
+                <option value="Inside Range">Inside Range</option>
+                <option value="1σ Stretched">1σ Stretched</option>
+                <option value="2σ Stretched">2σ Stretched</option>
+                <option value="3σ Stretched">3σ Stretched</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>First Candle</label>
+              <select id="inp-fc">
+                <option value="Above FC High">Above FC High</option>
+                <option value="Between H/L">Between H/L</option>
+                <option value="Below FC Low">Below FC Low</option>
+                <option value="Testing FC High">Testing FC High</option>
+                <option value="Testing FC Low">Testing FC Low</option>
+                <option value="N/A">N/A (not in session)</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>HTF Bias</label>
+              <select id="inp-htf">
+                <option value="ALIGNED">Aligned</option>
+                <option value="OPPOSING">Opposing</option>
+                <option value="OFF">OFF</option>
+              </select>
+            </div>
+            <div class="field-wrap full">
+              <label>FVG Context</label>
+              <select id="inp-fvg">
+                <option value="Bullish FVG below price">Bullish FVG below price</option>
+                <option value="Price in Bullish FVG">Price IN Bullish FVG</option>
+                <option value="Bearish FVG above price">Bearish FVG above price</option>
+                <option value="Price in Bearish FVG">Price IN Bearish FVG</option>
+                <option value="No FVG nearby">No FVG nearby</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>Entry Price</label>
+              <input type="number" id="inp-entry" step="0.01" placeholder="e.g. 3290.50">
+            </div>
+            <div class="field-wrap">
+              <label>Current Price</label>
+              <input type="number" id="inp-price" step="0.01" placeholder="e.g. 3290.50">
+            </div>
+          </div>
+
+          <div style="margin-top:14px">
+            <button class="btn btn-primary" style="width:100%;padding:10px" onclick="runAnalysis()">▶ &nbsp;RUN ANALYSIS</button>
+          </div>
+        </div>
+
+        <!-- Dashboard Mirror -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Dashboard Mirror</span>
+            <span class="badge badge-dim" id="mirror-status">PENDING</span>
+          </div>
+          <table class="dash-table">
+            <tr><td class="dash-row-label">TREND</td><td class="dash-row-val" id="mir-trend">—</td></tr>
+            <tr><td class="dash-row-label">EMA</td><td class="dash-row-val" id="mir-ema">—</td></tr>
+            <tr><td class="dash-row-label">MACD</td><td class="dash-row-val" id="mir-macd">—</td></tr>
+            <tr><td class="dash-row-label">RSI</td><td class="dash-row-val" id="mir-rsi">—</td></tr>
+            <tr><td class="dash-row-label">VWAP</td><td class="dash-row-val" id="mir-vwap">—</td></tr>
+            <tr><td class="dash-row-label">FIRST C.</td><td class="dash-row-val" id="mir-fc">—</td></tr>
+            <tr><td class="dash-row-label">FVG</td><td class="dash-row-val" id="mir-fvg">—</td></tr>
+            <tr><td class="dash-row-label">HTF BIAS</td><td class="dash-row-val" id="mir-htf">—</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- RIGHT COL -->
+      <div class="col-right">
+        <!-- Decision Banner -->
+        <div class="decision-banner idle" id="decision-banner">
+          <div class="decision-icon" id="decision-icon">⬜</div>
+          <div class="decision-text">
+            <h2 id="decision-text">AWAITING INPUT</h2>
+            <p id="decision-sub">Fill in the dashboard values and click Analyze to get a signal decision.</p>
+            <div class="stars" id="decision-stars"></div>
+          </div>
+        </div>
+
+        <!-- Confirmation Checklist -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Confirmation Checklist</span>
+            <span id="check-summary" class="badge badge-dim">—</span>
+          </div>
+          <div class="checklist" id="checklist">
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">EMA Stack Aligned<span class="check-sub">EMA9/21/50 fully ordered in signal direction</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">Price vs EMA50<span class="check-sub">Price above (buy) or below (sell) EMA50</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">VWAP Side<span class="check-sub">Price above VWAP (buy) or below VWAP (sell)</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">VWAP Stretch<span class="check-sub">Inside range or 1σ max — 2σ+ is skip territory</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">RSI Midline<span class="check-sub">RSI &gt; 50 for buys, &lt; 50 for sells; not at extreme</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">MACD Direction<span class="check-sub">MACD aligned or filter is OFF</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">First Candle Context<span class="check-sub">Price above FC High (buy) or below FC Low (sell)</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">FVG Context<span class="check-sub">Nearby FVG aligned with signal direction</span></span></div>
+            <div class="check-row na"><span class="check-icon">⬜</span><span class="check-text">HTF Bias<span class="check-sub">Higher timeframe trend aligned or filter OFF</span></span></div>
+          </div>
+        </div>
+
+        <!-- VWAP Stretch Meter -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">VWAP Stretch Meter</span>
+            <span class="badge badge-dim" id="stretch-label">—</span>
+          </div>
+          <div class="stretch-meter" id="stretch-meter">
+            <div class="stretch-seg s0" id="seg0"></div>
+            <div class="stretch-seg s1" id="seg1"></div>
+            <div class="stretch-seg s2" id="seg2"></div>
+            <div class="stretch-seg s3" id="seg3"></div>
+          </div>
+          <div class="stretch-labels">
+            <span>INSIDE</span><span>1σ</span><span>2σ</span><span>3σ</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:8px;line-height:1.7">
+            Full size ≤ Inside · Reduce 25-50% at 1σ · Skip at 2σ+ · Extreme danger at 3σ
+          </div>
+        </div>
+
+        <!-- Trade Parameters -->
+        <div class="card" id="params-card">
+          <div class="card-head">
+            <span class="card-title">Trade Parameters</span>
+            <span class="badge badge-dim" id="params-badge">PENDING</span>
+          </div>
+          <div class="params-grid">
+            <div class="param-box">
+              <div class="param-label">Entry</div>
+              <div class="param-val" id="p-entry">—</div>
+              <div class="param-sub">Suggested entry</div>
+            </div>
+            <div class="param-box">
+              <div class="param-label">Stop Loss</div>
+              <div class="param-val" id="p-sl" style="color:var(--bear)">—</div>
+              <div class="param-sub" id="p-sl-sub">Below FC Low / Above FC High</div>
+            </div>
+            <div class="param-box">
+              <div class="param-label">TP1 · 1R</div>
+              <div class="param-val" id="p-tp1" style="color:var(--bull)">—</div>
+              <div class="param-sub">Close 50% here</div>
+            </div>
+            <div class="param-box">
+              <div class="param-label">TP2 · 2R</div>
+              <div class="param-val" id="p-tp2" style="color:var(--bull)">—</div>
+              <div class="param-sub">Close remaining 50%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Analysis Panel -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">AI Signal Analysis</span>
+            <div class="ai-badge idle" id="ai-badge">CLAUDE · READY</div>
+          </div>
+          <div class="ai-panel" id="ai-panel">
+            <div class="ai-body" style="color:var(--text-dim);font-family:var(--mono);font-size:10px">
+              Run analysis to get Claude's assessment of this signal setup...
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+            <button class="btn btn-primary btn-sm" id="save-btn" onclick="saveSignal()" disabled>⬇ SAVE TO JOURNAL</button>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim)" id="save-status"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: JOURNAL ══ -->
+  <div class="tab-panel" id="tab-journal">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Trade Journal</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="badge badge-dim" id="journal-count">0 TRADES</span>
+          <button class="btn btn-primary btn-sm" onclick="loadJournal()">↻ REFRESH</button>
+        </div>
+      </div>
+      <div id="journal-stats-row" style="display:none;margin-bottom:14px;display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--text-dim)">
+        <span>WIN RATE: <span id="j-wr" style="color:var(--bull)">—</span></span>
+        <span>TOTAL P&L: <span id="j-pnl" style="color:var(--text)">—</span></span>
+        <span>AVG/TRADE: <span id="j-avg" style="color:var(--text)">—</span></span>
+      </div>
+      <div id="journal-wrap">
+        <div class="journal-empty">No trades saved yet. Run an analysis and save a signal.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: PERFORMANCE ══ -->
+  <div class="tab-panel" id="tab-performance">
+    <div id="perf-content">
+      <div class="card" style="text-align:center;padding:40px;font-family:var(--mono);font-size:11px;color:var(--text-dim)">
+        Save at least 3 completed trades (with outcomes marked) to see performance statistics.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: INSIGHTS ══ -->
+  <div class="tab-panel" id="tab-insights">
+    <div class="card" id="insights-panel">
+      <div class="card-head">
+        <span class="card-title">AI-Generated Insights</span>
+        <span class="badge badge-accent">CLAUDE · PATTERN ANALYSIS</span>
+      </div>
+      <div id="insights-content" style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text-dim)">
+        5+ completed trades needed to generate personalised insights.
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    For educational and analytical purposes only. Not financial advice. Trading involves risk of loss. Verify all signals independently.
+    Strategy: EMA 9/21/50 + VWAP Bands + MACD + RSI + First Candle H/L + FVG confluence system.
+  </div>
+</div>
+
+<!-- Outcome Modal -->
+<div class="modal-overlay" id="outcome-modal">
+  <div class="modal">
+    <h3>Mark Trade Outcome</h3>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:10px" id="modal-trade-info">—</div>
+    <div class="modal-btns" id="modal-outcome-btns">
+      <button class="outcome-select-btn" onclick="selectOutcome('TP1')">TP1 HIT (+1R)</button>
+      <button class="outcome-select-btn" onclick="selectOutcome('TP2')">TP2 HIT (+2R)</button>
+      <button class="outcome-select-btn" onclick="selectOutcome('TP1+TP2')">TP1 + TP2 (+1.5R)</button>
+      <button class="outcome-select-btn" onclick="selectOutcome('Stopped Out')">STOPPED OUT (-1R)</button>
+      <button class="outcome-select-btn" onclick="selectOutcome('Partial')">PARTIAL</button>
+      <button class="outcome-select-btn" onclick="selectOutcome('Breakeven')">BREAKEVEN (0R)</button>
+    </div>
+    <div class="field-wrap" style="margin-bottom:10px">
+      <label>Notes (optional)</label>
+      <input type="text" id="modal-notes" placeholder="e.g. Closed early, news event...">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="saveOutcome()">SAVE OUTCOME</button>
+      <button class="btn btn-sm" style="background:var(--surface2);border-color:var(--border2);color:var(--text-dim)" onclick="closeModal()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const SUPABASE_URL  = 'https://rcbiuusyzlsdxllrgtxl.supabase.co';
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjYml1dXN5emxzZHhsbHJndHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzOTg1MTIsImV4cCI6MjA4ODk3NDUxMn0.jYGcai3qLfWtx1tPLIcQafcNbZ3Ll2V78v2NXW9ZWXk';
+const SB_HEADERS    = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` };
+const AI_PROXY      = 'https://shrill-pine-3967.realedesigns.workers.dev';
+
+let lastAnalysis    = null;
+let pendingOutcomeId= null;
+let selectedOutcome = null;
+
+// ─────────────────────────────────────────────
+// CLOCK
+// ─────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toISOString().replace('T',' ').split('.')[0] + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─────────────────────────────────────────────
+// TABS
+// ─────────────────────────────────────────────
+function switchTab(id, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+id).classList.add('active');
+  if (id === 'journal') loadJournal();
+  if (id === 'performance') loadPerformance();
+  if (id === 'insights') loadInsights();
+}
+
+// ─────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────
+function showToast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast show ${type}`;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ─────────────────────────────────────────────
+// UPDATE MIRROR
+// ─────────────────────────────────────────────
+function updateMirror(vals) {
+  const el = (id, txt, cls) => {
+    const e = document.getElementById(id);
+    if (!e) return;
+    e.textContent = txt;
+    e.className = 'dash-row-val ' + (cls||'');
+  };
+  el('mir-trend', vals.trend, vals.trend==='BULLISH'?'bull': vals.trend==='BEARISH'?'bear':'neutral');
+  el('mir-ema',   vals.ema,   vals.ema.includes('>')? 'bull':'bear');
+  el('mir-macd',  vals.macd,  vals.macd==='BULL'?'bull': vals.macd==='BEAR'?'bear': vals.macd==='OFF'?'neutral':'');
+  const rsiVal = parseFloat(vals.rsi);
+  const rsiTag = rsiVal > 70 ? ' (OB)' : rsiVal < 30 ? ' (OS)' : '';
+  el('mir-rsi', vals.rsi + rsiTag, rsiVal>70?'warn': rsiVal<30?'warn': rsiVal>50?'bull':'bear');
+  el('mir-vwap', vals.vwapPos + ' | ' + vals.vwapStretch, vals.vwapPos==='Above'?'bull':'bear');
+  el('mir-fc',   vals.fc,  '');
+  el('mir-fvg',  vals.fvg, '');
+  el('mir-htf',  vals.htf, vals.htf==='ALIGNED'?'bull': vals.htf==='OPPOSING'?'bear':'neutral');
+  document.getElementById('mirror-status').textContent = 'LOADED';
+  document.getElementById('mirror-status').className   = 'badge badge-accent';
+
+  // stretch meter
+  const segs = ['Inside Range','1σ Stretched','2σ Stretched','3σ Stretched'];
+  segs.forEach((s,i) => {
+    const el = document.getElementById('seg'+i);
+    el.classList.toggle('active', vals.vwapStretch.startsWith(s.split(' ')[0])||
+      (i===0 && vals.vwapStretch==='Inside Range'));
+  });
+  // simpler:
+  document.getElementById('seg0').classList.toggle('active', vals.vwapStretch==='Inside Range');
+  document.getElementById('seg1').classList.toggle('active', vals.vwapStretch.startsWith('1σ'));
+  document.getElementById('seg2').classList.toggle('active', vals.vwapStretch.startsWith('2σ'));
+  document.getElementById('seg3').classList.toggle('active', vals.vwapStretch.startsWith('3σ'));
+  document.getElementById('stretch-label').textContent = vals.vwapStretch;
+}
+
+// ─────────────────────────────────────────────
+// RULE ENGINE  — pure JS checklist
+// ─────────────────────────────────────────────
+function runRuleEngine(vals) {
+  const signal = vals.signal; // BUY or SELL
+  const isBuy  = signal === 'BUY';
+  const checks = [];
+
+  // 1. EMA stack
+  const emaOk = isBuy
+    ? vals.ema.includes('>') && vals.trend === 'BULLISH'
+    : vals.ema.includes('<') && vals.trend === 'BEARISH';
+  checks.push({ label:'EMA Stack Aligned', sub:'EMA9/21/50 fully ordered in signal direction',
+    status: vals.ema==='MIXED' ? 'fail' : emaOk ? 'pass' : 'fail' });
+
+  // 2. Price vs EMA50
+  const trendOk = isBuy ? vals.trend==='BULLISH' : vals.trend==='BEARISH';
+  checks.push({ label:'Price vs EMA50', sub:'Price above (buy) or below (sell) EMA50',
+    status: trendOk ? 'pass' : 'fail' });
+
+  // 3. VWAP side
+  const vwapSideOk = isBuy ? vals.vwapPos==='Above' : vals.vwapPos==='Below';
+  checks.push({ label:'VWAP Side', sub:'Price on correct side of VWAP',
+    status: vals.vwapPos==='At' ? 'warn' : vwapSideOk ? 'pass' : 'fail' });
+
+  // 4. VWAP stretch
+  const stretch = vals.vwapStretch;
+  const stretchStatus = stretch==='Inside Range' ? 'pass'
+    : stretch.startsWith('1σ') ? 'warn'
+    : 'fail';
+  checks.push({ label:'VWAP Stretch', sub:'Inside range best; 1σ acceptable; 2σ+ skip',
+    status: stretchStatus });
+
+  // 5. RSI
+  const rsi = parseFloat(vals.rsi);
+  const rsiMidOk = isBuy ? rsi > 50 : rsi < 50;
+  const rsiExtreme = isBuy ? rsi > 70 : rsi < 30;
+  checks.push({ label:'RSI Midline', sub:`RSI ${rsi} — ${rsiExtreme ? (isBuy?'Overbought caution':'Oversold caution') : rsiMidOk ? 'Clean' : 'Against direction'}`,
+    status: !rsiMidOk ? 'fail' : rsiExtreme ? 'warn' : 'pass' });
+
+  // 6. MACD
+  const macdOk = vals.macd==='OFF'
+    || (isBuy && vals.macd==='BULL')
+    || (!isBuy && vals.macd==='BEAR');
+  checks.push({ label:'MACD Direction', sub:'MACD aligned or filter is OFF',
+    status: vals.macd==='OFF' ? 'na' : macdOk ? 'pass' : vals.macd==='NEUTRAL' ? 'warn' : 'fail' });
+
+  // 7. First candle
+  const fcGood = isBuy
+    ? ['Above FC High','Testing FC High'].includes(vals.fc)
+    : ['Below FC Low','Testing FC Low'].includes(vals.fc);
+  const fcMiddle = vals.fc === 'Between H/L';
+  const fcNA     = vals.fc === 'N/A';
+  checks.push({ label:'First Candle Context', sub:'Breakout confirmed beyond session first candle',
+    status: fcNA ? 'na' : fcGood ? 'pass' : fcMiddle ? 'warn' : 'fail' });
+
+  // 8. FVG
+  const fvgBullGood = ['Bullish FVG below price','Price in Bullish FVG'].includes(vals.fvg);
+  const fvgBearGood = ['Bearish FVG above price','Price in Bearish FVG'].includes(vals.fvg);
+  const fvgAligned  = isBuy ? fvgBullGood : fvgBearGood;
+  const fvgElite    = isBuy ? vals.fvg==='Price in Bullish FVG' : vals.fvg==='Price in Bearish FVG';
+  checks.push({ label:'FVG Context', sub: fvgElite ? '🔥 ELITE — price in FVG zone' : 'Nearby imbalance zone context',
+    status: vals.fvg==='No FVG nearby' ? 'na' : fvgAligned ? 'pass' : 'warn' });
+
+  // 9. HTF Bias
+  checks.push({ label:'HTF Bias', sub:'Higher timeframe trend confirms direction',
+    status: vals.htf==='OFF' ? 'na' : vals.htf==='ALIGNED' ? 'pass' : 'fail' });
+
+  // Render checklist
+  const icons = { pass:'✅', fail:'❌', warn:'⚠️', na:'⬜' };
+  const cl = document.getElementById('checklist');
+  cl.innerHTML = checks.map(c => `
+    <div class="check-row ${c.status}">
+      <span class="check-icon">${icons[c.status]}</span>
+      <span class="check-text">${c.label}<span class="check-sub">${c.sub}</span></span>
+    </div>`).join('');
+
+  // Summary
+  const passes = checks.filter(c=>c.status==='pass').length;
+  const fails  = checks.filter(c=>c.status==='fail').length;
+  const warns  = checks.filter(c=>c.status==='warn').length;
+  const active = checks.filter(c=>c.status!=='na').length;
+  document.getElementById('check-summary').textContent = `${passes}/${active} PASS · ${warns} WARN · ${fails} FAIL`;
+
+  // Decision logic
+  const criticalFail = fails > 0;
+  const hasWarn      = warns > 0;
+  const stretch2plus = stretch.startsWith('2σ') || stretch.startsWith('3σ');
+  const rsiExhaust   = isBuy ? rsi > 70 : rsi < 30;
+  const htfOppose    = vals.htf === 'OPPOSING';
+
+  let decision, decClass, decIcon, decSub;
+
+  if (criticalFail || stretch2plus || htfOppose) {
+    decision = 'SKIP'; decClass = 'skip'; decIcon = '🚫';
+    const reasons = [];
+    if (fails > 0) reasons.push(`${fails} critical condition(s) failed`);
+    if (stretch2plus) reasons.push('VWAP stretch too extreme — wait for pullback');
+    if (htfOppose)  reasons.push('HTF bias opposing — counter-trend risk');
+    decSub = reasons.join(' · ');
+  } else if (rsiExhaust || fcMiddle) {
+    decision = 'WAIT'; decClass = 'wait'; decIcon = '⏸️';
+    const reasons = [];
+    if (rsiExhaust) reasons.push(isBuy ? 'RSI overbought — wait for cooldown' : 'RSI oversold — bounce risk');
+    if (fcMiddle) reasons.push('Price between FC H/L — wait for breakout direction');
+    decSub = reasons.join(' · ');
+  } else {
+    decision = isBuy ? 'ENTER LONG' : 'ENTER SHORT';
+    decClass = isBuy ? 'enter-long' : 'enter-short';
+    decIcon  = isBuy ? '🟢' : '🔴';
+    decSub   = hasWarn
+      ? `${warns} warning(s) — reduce position size 25-50%`
+      : 'All conditions aligned — full size entry permitted';
+  }
+
+  // Stars
+  let stars = 0;
+  if (!criticalFail && !stretch2plus && !htfOppose) {
+    stars = 3;
+    if (hasWarn || stretch.startsWith('1σ')) stars = 2;
+    if (warns >= 2) stars = 1;
+  }
+
+  const banner = document.getElementById('decision-banner');
+  banner.className = `decision-banner ${decClass}`;
+  document.getElementById('decision-icon').textContent  = decIcon;
+  document.getElementById('decision-text').textContent  = decision;
+  document.getElementById('decision-sub').textContent   = decSub;
+  document.getElementById('decision-stars').textContent = stars > 0 ? '⭐'.repeat(stars) : '';
+
+  // Trade params
+  const entry = parseFloat(vals.entry) || parseFloat(vals.price) || null;
+  if (entry && (decision.includes('ENTER'))) {
+    const asset   = vals.asset;
+    const isGold  = asset === 'XAUUSD';
+    const isJPY   = asset.includes('JPY');
+    const slMult  = isGold ? 10 : isJPY ? 0.5 : 0.001;
+    const unit    = isGold ? 'pts' : 'pips';
+    const atr     = isGold ? 12 : isJPY ? 0.6 : 0.0015;
+    const sl = isBuy ? entry - atr : entry + atr;
+    const risk = Math.abs(entry - sl);
+    const tp1 = isBuy ? entry + risk : entry - risk;
+    const tp2 = isBuy ? entry + risk*2 : entry - risk*2;
+    document.getElementById('p-entry').textContent = entry.toFixed(isJPY?3:isGold?2:5);
+    document.getElementById('p-sl').textContent    = sl.toFixed(isJPY?3:isGold?2:5);
+    document.getElementById('p-tp1').textContent   = tp1.toFixed(isJPY?3:isGold?2:5);
+    document.getElementById('p-tp2').textContent   = tp2.toFixed(isJPY?3:isGold?2:5);
+    document.getElementById('p-sl-sub').textContent= isBuy?'Below FC Low / recent swing':'Above FC High / recent swing';
+    document.getElementById('params-badge').textContent = 'CALCULATED';
+    document.getElementById('params-badge').className   = 'badge badge-accent';
+  } else {
+    ['p-entry','p-sl','p-tp1','p-tp2'].forEach(id => document.getElementById(id).textContent='—');
+    document.getElementById('params-badge').textContent = decision.includes('SKIP')||decision==='WAIT' ? 'N/A — '+decision : 'ENTER PRICE NEEDED';
+    document.getElementById('params-badge').className   = 'badge badge-dim';
+  }
+
+  return { checks, decision, stars, passes, fails, warns };
+}
+
+// ─────────────────────────────────────────────
+// MAIN ANALYSIS
+// ─────────────────────────────────────────────
+async function runAnalysis() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true; btn.textContent = '⟳ ANALYZING...';
+
+  const vals = {
+    asset:       document.getElementById('inp-asset').value,
+    tf:          document.getElementById('inp-tf').value,
+    session:     document.getElementById('inp-session').value,
+    signal:      document.getElementById('inp-signal').value,
+    trend:       document.getElementById('inp-trend').value,
+    ema:         document.getElementById('inp-ema').value,
+    macd:        document.getElementById('inp-macd').value,
+    rsi:         document.getElementById('inp-rsi').value,
+    vwapPos:     document.getElementById('inp-vwap-pos').value,
+    vwapStretch: document.getElementById('inp-vwap-stretch').value,
+    fc:          document.getElementById('inp-fc').value,
+    htf:         document.getElementById('inp-htf').value,
+    fvg:         document.getElementById('inp-fvg').value,
+    entry:       document.getElementById('inp-entry').value,
+    price:       document.getElementById('inp-price').value,
+  };
+
+  // Update mirror
+  updateMirror(vals);
+
+  // Run rule engine
+  const ruleResult = runRuleEngine(vals);
+
+  // Run AI
+  await runAIAnalysis(vals, ruleResult);
+
+  btn.disabled = false; btn.textContent = '▶ ANALYZE';
+  document.getElementById('save-btn').disabled = false;
+}
+
+// ─────────────────────────────────────────────
+// AI ANALYSIS
+// ─────────────────────────────────────────────
+async function runAIAnalysis(vals, ruleResult) {
+  const badge = document.getElementById('ai-badge');
+  const panel = document.getElementById('ai-panel');
+  badge.className = 'ai-badge loading';
+  badge.textContent = 'ANALYSING...';
+  panel.innerHTML = '<div class="ai-body" style="color:var(--text-dim);font-family:var(--mono);font-size:10px">⟳ Claude is reading this signal setup...</div>';
+
+  // Learning context from journal
+  const trades = await fetchJournalRaw();
+  const completed = trades.filter(t => t.outcome && t.outcome !== 'Pending');
+  let learningCtx = '';
+  if (completed.length >= 4) {
+    const wr = (completed.filter(t=>t.outcome&&(t.outcome.includes('TP')||t.outcome.includes('Partial'))).length / completed.length * 100).toFixed(0);
+    // stretch breakdown
+    const byStretch = {};
+    completed.forEach(t => {
+      const s = t.vwap_stretch||'Unknown';
+      if (!byStretch[s]) byStretch[s] = {w:0,t:0};
+      byStretch[s].t++;
+      if (t.outcome&&(t.outcome.includes('TP')||t.outcome.includes('Partial'))) byStretch[s].w++;
+    });
+    const stretchStr = Object.entries(byStretch).map(([s,v])=>`${s}: ${(v.w/v.t*100).toFixed(0)}% (${v.t} trades)`).join(', ');
+    const bySession = {};
+    completed.forEach(t => {
+      const s = t.session||'Unknown';
+      if (!bySession[s]) bySession[s] = {w:0,t:0};
+      bySession[s].t++;
+      if (t.outcome&&(t.outcome.includes('TP')||t.outcome.includes('Partial'))) bySession[s].w++;
+    });
+    const sessionStr = Object.entries(bySession).map(([s,v])=>`${s}: ${(v.w/v.t*100).toFixed(0)}% (${v.t} trades)`).join(', ');
+    learningCtx = `\n\nYOUR HISTORICAL PERFORMANCE (${completed.length} completed trades):\nOverall win rate: ${wr}%\nBy VWAP stretch: ${stretchStr}\nBy session: ${sessionStr}`;
+  }
+
+  const isBuy = vals.signal === 'BUY';
+
+  const prompt = `You are a professional trading signal analyst specialising in the EMA 9/21/50 + VWAP Bands confluence system.
+
+SIGNAL SETUP:
+- Asset: ${vals.asset}
+- Timeframe: ${vals.tf}
+- Session: ${vals.session}
+- Signal type: ${vals.signal}
+- Dashboard TREND: ${vals.trend}
+- EMA alignment: ${vals.ema}
+- MACD: ${vals.macd}
+- RSI: ${vals.rsi}
+- VWAP position: ${vals.vwapPos} VWAP
+- VWAP stretch: ${vals.vwapStretch}
+- First Candle context: ${vals.fc}
+- FVG context: ${vals.fvg}
+- HTF Bias: ${vals.htf}
+
+RULE ENGINE RESULT:
+- Decision: ${ruleResult.decision}
+- Passes: ${ruleResult.passes} | Warns: ${ruleResult.warns} | Fails: ${ruleResult.fails}
+- Stars: ${ruleResult.stars}/3${learningCtx}
+
+YOUR TASK:
+1. Assess whether this is a high-quality setup or a marginal one based on the EMA/VWAP confluence rules
+2. Note the most important confluence factor (for or against)
+3. Give 2-3 sentences of reasoning about entry timing and risk
+4. If SKIP/WAIT, what would need to change for this to become a valid entry?
+
+Reply ONLY in this exact JSON format, no markdown, no extra text:
+{
+  "verdict": "CONFIRMS" or "CAUTION" or "CONFLICTS",
+  "pattern": "short name of what this setup represents e.g. 'Clean EMA stack pullback', 'Overextended VWAP grab'",
+  "reasoning": "2-3 sentences about the quality of this setup right now",
+  "key_factor": "the single most important factor supporting or undermining this trade",
+  "ai_says": "one clear tactical line — what to do or watch for",
+  "risk_note": "one specific risk management tip for this exact setup"
+}`;
+
+  try {
+    const res = await fetch(AI_PROXY, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 900,
+        messages: [{ role:'user', content: prompt }]
+      })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const raw = data.content?.find(b=>b.type==='text')?.text || '';
+    const ai  = JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    const vc = ai.verdict==='CONFIRMS' ? 'confirms' : ai.verdict==='CAUTION' ? 'caution' : 'conflicts';
+    badge.className   = `ai-badge ${vc}`;
+    badge.textContent = ai.verdict;
+
+    const vcColor = ai.verdict==='CONFIRMS' ? 'var(--bull)' : ai.verdict==='CAUTION' ? 'var(--warn)' : 'var(--bear)';
+
+    panel.innerHTML = `
+      <div class="ai-pattern">${ai.pattern}</div>
+      <div class="ai-body" style="margin-bottom:8px">${ai.reasoning}</div>
+      <div class="ai-row-split">
+        <div>
+          <div class="ai-col-label">KEY FACTOR</div>
+          <div class="ai-col-val">${ai.key_factor}</div>
+        </div>
+        <div>
+          <div class="ai-col-label">AI ASSESSMENT</div>
+          <div class="ai-col-val" style="color:${vcColor}">${ai.ai_says}</div>
+        </div>
+      </div>
+      <div class="ai-risk-note">⚠ ${ai.risk_note}</div>`;
+
+    lastAnalysis = { vals, ruleResult, ai };
+
+  } catch(e) {
+    badge.className = 'ai-badge conflicts';
+    badge.textContent = 'API ERROR';
+    panel.innerHTML = `<div class="ai-body" style="color:var(--text-dim);font-family:var(--mono);font-size:10px">⚠ Claude API error: ${e.message}. Rule engine result still valid above.</div>`;
+    lastAnalysis = { vals, ruleResult, ai: null };
+  }
+}
+
+// ─────────────────────────────────────────────
+// SAVE SIGNAL
+// ─────────────────────────────────────────────
+async function saveSignal() {
+  if (!lastAnalysis) return;
+  const { vals, ruleResult, ai } = lastAnalysis;
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+
+  const row = {
+    asset:        vals.asset,
+    timeframe:    vals.tf,
+    session:      vals.session,
+    signal:       vals.signal,
+    trend:        vals.trend,
+    ema_align:    vals.ema,
+    macd:         vals.macd,
+    rsi:          parseFloat(vals.rsi) || null,
+    vwap_pos:     vals.vwapPos,
+    vwap_stretch: vals.vwapStretch,
+    first_candle: vals.fc,
+    fvg:          vals.fvg,
+    htf_bias:     vals.htf,
+    entry_price:  parseFloat(vals.entry) || parseFloat(vals.price) || null,
+    decision:     ruleResult.decision,
+    stars:        ruleResult.stars,
+    ai_verdict:   ai?.verdict || null,
+    ai_pattern:   ai?.pattern || null,
+    outcome:      'Pending',
+    created_at:   new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ema_vwap_signals`, {
+      method:'POST',
+      headers:{ ...SB_HEADERS, 'Prefer':'return=representation' },
+      body: JSON.stringify(row)
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err);
+    }
+    document.getElementById('save-status').textContent = '✓ Saved to journal';
+    showToast('Signal saved to journal ✓', 'ok');
+    btn.textContent = '✓ SAVED';
+  } catch(e) {
+    document.getElementById('save-status').textContent = '⚠ Save failed: ' + e.message.substring(0,60);
+    showToast('Save failed: ' + e.message.substring(0,50), 'err');
+    btn.disabled = false;
+    btn.textContent = '⬇ SAVE TO JOURNAL';
+  }
+}
+
+// ─────────────────────────────────────────────
+// JOURNAL
+// ─────────────────────────────────────────────
+async function fetchJournalRaw() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ema_vwap_signals?order=created_at.desc&limit=50`, {
+      headers: SB_HEADERS
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+async function loadJournal() {
+  const wrap = document.getElementById('journal-wrap');
+  wrap.innerHTML = '<div class="journal-empty">Loading...</div>';
+  const trades = await fetchJournalRaw();
+
+  document.getElementById('journal-count').textContent = trades.length + ' TRADES';
+
+  if (!trades.length) {
+    wrap.innerHTML = '<div class="journal-empty">No trades saved yet. Run an analysis and save a signal.</div>';
+    return;
+  }
+
+  // Stats
+  const completed = trades.filter(t=>t.outcome && t.outcome!=='Pending');
+  if (completed.length >= 2) {
+    const wins = completed.filter(t=>t.outcome&&(t.outcome.includes('TP')||t.outcome==='Partial')).length;
+    const wr   = (wins/completed.length*100).toFixed(0);
+    const pnl  = completed.reduce((acc,t) => {
+      if (t.outcome==='TP1') return acc+1;
+      if (t.outcome==='TP2') return acc+2;
+      if (t.outcome==='TP1+TP2') return acc+1.5;
+      if (t.outcome==='Stopped Out') return acc-1;
+      if (t.outcome==='Breakeven') return acc;
+      if (t.outcome==='Partial') return acc+0.5;
+      return acc;
+    }, 0);
+    const row = document.getElementById('journal-stats-row');
+    row.style.display = 'flex';
+    document.getElementById('j-wr').textContent  = wr + '%';
+    document.getElementById('j-pnl').textContent = (pnl>=0?'+':'')+pnl.toFixed(1)+'R';
+    document.getElementById('j-pnl').style.color = pnl>=0 ? 'var(--bull)' : 'var(--bear)';
+    document.getElementById('j-avg').textContent = ((pnl/completed.length)>=0?'+':'')+(pnl/completed.length).toFixed(2)+'R';
+  }
+
+  const dirClass = s => s==='BUY' ? 'dir-long' : 'dir-short';
+  const outcomeDisplay = o => {
+    if (!o||o==='Pending') return '<span style="color:var(--text-dim)">Pending</span>';
+    const c = o.includes('TP') ? 'outcome-win' : o==='Stopped Out' ? 'outcome-loss' : '';
+    return `<span class="${c}">${o}</span>`;
+  };
+  const starsHtml = n => n ? '⭐'.repeat(n) : '—';
+
+  wrap.innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="journal-table">
+      <thead>
+        <tr>
+          <th>DATE</th><th>ASSET</th><th>TF</th><th>SIG</th><th>RSI</th>
+          <th>VWAP</th><th>SESSION</th><th>⭐</th><th>DECISION</th><th>OUTCOME</th><th>ACTION</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${trades.map(t => `
+          <tr>
+            <td>${(t.created_at||'').split('T')[0]}</td>
+            <td>${t.asset||'—'}</td>
+            <td>${t.timeframe||'—'}</td>
+            <td class="${dirClass(t.signal)}">${t.signal||'—'}</td>
+            <td>${t.rsi||'—'}</td>
+            <td style="font-size:9px">${t.vwap_stretch||'—'}</td>
+            <td>${t.session||'—'}</td>
+            <td style="font-size:12px">${starsHtml(t.stars)}</td>
+            <td style="font-size:10px">${t.decision||'—'}</td>
+            <td>${outcomeDisplay(t.outcome)}</td>
+            <td>
+              ${(!t.outcome||t.outcome==='Pending')
+                ? `<button class="outcome-btn" onclick="openOutcomeModal('${t.id}','${t.asset||''} ${t.signal||''}')">+ Mark</button>`
+                : `<span style="color:var(--text-dim);font-size:9px">✓</span>`}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────
+// OUTCOME MODAL
+// ─────────────────────────────────────────────
+function openOutcomeModal(id, label) {
+  pendingOutcomeId = id;
+  selectedOutcome  = null;
+  document.getElementById('modal-trade-info').textContent = label;
+  document.getElementById('modal-notes').value = '';
+  document.querySelectorAll('.outcome-select-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('outcome-modal').classList.add('open');
+}
+function closeModal() { document.getElementById('outcome-modal').classList.remove('open'); }
+function selectOutcome(o) {
+  selectedOutcome = o;
+  document.querySelectorAll('.outcome-select-btn').forEach(b => {
+    b.classList.toggle('selected', b.textContent.includes(o.split('+')[0].trim().split(' ')[0]));
+  });
+}
+async function saveOutcome() {
+  if (!selectedOutcome || !pendingOutcomeId) return showToast('Select an outcome first', 'err');
+  const notes = document.getElementById('modal-notes').value;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ema_vwap_signals?id=eq.${pendingOutcomeId}`, {
+      method:'PATCH',
+      headers:{ ...SB_HEADERS, 'Prefer':'return=minimal' },
+      body: JSON.stringify({ outcome: selectedOutcome, notes: notes })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    showToast('Outcome saved ✓', 'ok');
+    closeModal();
+    loadJournal();
+  } catch(e) { showToast('Error: ' + e.message, 'err'); }
+}
+
+// ─────────────────────────────────────────────
+// PERFORMANCE
+// ─────────────────────────────────────────────
+async function loadPerformance() {
+  const el = document.getElementById('perf-content');
+  const trades = await fetchJournalRaw();
+  const completed = trades.filter(t=>t.outcome && t.outcome!=='Pending');
+  if (completed.length < 3) {
+    el.innerHTML = '<div class="card" style="text-align:center;padding:40px;font-family:var(--mono);font-size:11px;color:var(--text-dim)">Save at least 3 completed trades (with outcomes) to see performance statistics.</div>';
+    return;
+  }
+
+  const pnlOf = t => {
+    if (t.outcome==='TP1') return 1;
+    if (t.outcome==='TP2') return 2;
+    if (t.outcome==='TP1+TP2') return 1.5;
+    if (t.outcome==='Stopped Out') return -1;
+    if (t.outcome==='Breakeven') return 0;
+    if (t.outcome==='Partial') return 0.5;
+    return 0;
+  };
+  const wins  = completed.filter(t=>pnlOf(t)>0).length;
+  const wr    = (wins/completed.length*100).toFixed(0);
+  const pnl   = completed.reduce((a,t)=>a+pnlOf(t),0);
+  const avg   = pnl/completed.length;
+
+  // By stretch
+  const byStretch = {};
+  ['Inside Range','1σ Stretched','2σ Stretched','3σ Stretched'].forEach(s => byStretch[s]={w:0,t:0});
+  completed.forEach(t => {
+    const s = t.vwap_stretch||'Unknown';
+    if (!byStretch[s]) byStretch[s]={w:0,t:0};
+    byStretch[s].t++;
+    if (pnlOf(t)>0) byStretch[s].w++;
+  });
+
+  // By session
+  const bySession = {};
+  completed.forEach(t => {
+    const s = t.session||'Unknown';
+    if (!bySession[s]) bySession[s]={w:0,t:0};
+    bySession[s].t++;
+    if (pnlOf(t)>0) bySession[s].w++;
+  });
+
+  const barRow = (label,wins,total) => {
+    if (!total) return '';
+    const pct = (wins/total*100).toFixed(0);
+    const cls = pct >= 60 ? 'bull' : pct < 40 ? 'bear' : '';
+    return `<div class="bar-row">
+      <span class="bar-row-label">${label}</span>
+      <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <span class="bar-pct">${pct}%</span>
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div class="perf-grid">
+      <div class="perf-card">
+        <div class="perf-label">Total Trades</div>
+        <div class="perf-val">${completed.length}</div>
+        <div class="perf-sub">completed with outcomes</div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-label">Win Rate</div>
+        <div class="perf-val ${wr>=50?'pos':'neg'}">${wr}%</div>
+        <div class="perf-sub">${wins}W / ${completed.length-wins}L</div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-label">Total P&L</div>
+        <div class="perf-val ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':''}${pnl.toFixed(1)}R</div>
+        <div class="perf-sub">in R-multiples</div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-label">Avg / Trade</div>
+        <div class="perf-val ${avg>=0?'pos':'neg'}">${avg>=0?'+':''}${avg.toFixed(2)}R</div>
+        <div class="perf-sub">${avg>0.3?'✓ Edge confirmed':'Build more data'}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <div class="card-head"><span class="card-title">Win Rate by VWAP Stretch</span></div>
+        <div class="bar-chart-wrap">
+          ${Object.entries(byStretch).map(([s,v])=>barRow(s,v.w,v.t)).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Win Rate by Session</span></div>
+        <div class="bar-chart-wrap">
+          ${Object.entries(bySession).map(([s,v])=>barRow(s,v.w,v.t)).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────
+// INSIGHTS
+// ─────────────────────────────────────────────
+async function loadInsights() {
+  const el = document.getElementById('insights-content');
+  const trades = await fetchJournalRaw();
+  const completed = trades.filter(t=>t.outcome&&t.outcome!=='Pending');
+
+  if (completed.length < 5) {
+    el.innerHTML = '<div style="padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text-dim)">' +
+      `${completed.length}/5 completed trades needed. ${5-completed.length} more to go.</div>`;
+    return;
+  }
+
+  el.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:20px;text-align:center">⟳ Claude is analysing your trade patterns...</div>';
+
+  const pnlOf = t => {
+    if (t.outcome==='TP1') return 1; if (t.outcome==='TP2') return 2;
+    if (t.outcome==='TP1+TP2') return 1.5; if (t.outcome==='Stopped Out') return -1;
+    if (t.outcome==='Breakeven') return 0; if (t.outcome==='Partial') return 0.5;
+    return 0;
+  };
+  const wins = completed.filter(t=>pnlOf(t)>0).length;
+  const wr   = (wins/completed.length*100).toFixed(0);
+  const pnl  = completed.reduce((a,t)=>a+pnlOf(t),0);
+
+  const summary = completed.map(t=>`${t.created_at?.split('T')[0]||'?'} | ${t.asset} ${t.signal} ${t.timeframe} | VWAP: ${t.vwap_stretch} | Session: ${t.session} | Stars: ${t.stars} | Decision: ${t.decision} | Outcome: ${t.outcome} | P&L: ${pnlOf(t)}R`).join('\n');
+
+  const prompt = `You are analyzing a trader's personal performance data from the EMA 9/21/50 + VWAP Bands confluence trading system.
+
+TRADE HISTORY (${completed.length} trades):
+${summary}
+
+OVERALL: Win rate ${wr}%, Total P&L ${pnl.toFixed(1)}R
+
+Analyze this data and provide 4-5 personalised insights. For each insight identify:
+- The TYPE: one of EDGE, WARNING, PATTERN, or TIP
+- A clear, actionable insight based specifically on this trader's data
+
+Reply ONLY in this exact JSON format:
+{
+  "insights": [
+    { "type": "EDGE|WARNING|PATTERN|TIP", "text": "insight here" },
+    ...
+  ]
+}`;
+
+  try {
+    const res = await fetch(AI_PROXY, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:800,
+        messages:[{role:'user',content:prompt}] })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const raw  = data.content?.find(b=>b.type==='text')?.text || '';
+    const ai   = JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    el.innerHTML = `<div class="insight-list">
+      ${ai.insights.map(i=>`
+        <div class="insight-card ${i.type}">
+          <span class="insight-tag">${i.type}</span>
+          <div class="insight-body">${i.text}</div>
+        </div>`).join('')}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:20px">
+      ⚠ Could not load insights: ${e.message}</div>`;
+  }
+}
+
+// ─────────────────────────────────────────────
+// TABLE SETUP CHECK
+// ─────────────────────────────────────────────
+// If you see "relation does not exist" errors, run this SQL in Supabase:
+/*
+CREATE TABLE IF NOT EXISTS ema_vwap_signals (
+  id           uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at   timestamptz DEFAULT now(),
+  asset        text,
+  timeframe    text,
+  session      text,
+  signal       text,
+  trend        text,
+  ema_align    text,
+  macd         text,
+  rsi          numeric,
+  vwap_pos     text,
+  vwap_stretch text,
+  first_candle text,
+  fvg          text,
+  htf_bias     text,
+  entry_price  numeric,
+  decision     text,
+  stars        int,
+  ai_verdict   text,
+  ai_pattern   text,
+  outcome      text DEFAULT 'Pending',
+  notes        text
+);
+ALTER TABLE ema_vwap_signals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all" ON ema_vwap_signals FOR ALL USING (true) WITH CHECK (true);
+*/
+
+// Init
+loadJournal();
+</script>
+</body>
+</html>
