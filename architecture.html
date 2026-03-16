@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pase AI — System Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    --gold:#f5c842;--gold-dim:rgba(245,200,66,0.1);
+    --bg:#090c10;--surface:#0e1318;--surface2:#131a22;
+    --border:#1e2d3d;--border2:#253040;
+    --text:#cfd8e3;--text-dim:#546e7a;--text-bright:#eceff1;
+    --green:#00e676;--blue:#29b6f6;--red:#ff3d57;
+    --purple:#7c4dff;--teal:#00bfa5;--amber:#ffab40;--coral:#ff6e40;
+  }
+  body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;overflow-x:hidden;}
+  .grid-bg{position:fixed;inset:0;background-image:linear-gradient(rgba(245,200,66,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(245,200,66,0.018) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0;}
+  .scanlines{position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.018) 2px,rgba(0,0,0,0.018) 4px);pointer-events:none;z-index:0;}
+
+  /* NAV */
+  nav{position:sticky;top:0;z-index:100;background:rgba(9,12,16,0.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:54px;}
+  .logo{display:flex;align-items:center;gap:10px;}
+  .logo-icon{width:34px;height:34px;background:linear-gradient(135deg,#f5c842,#e8a020);border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:15px;color:#000;box-shadow:0 0 14px rgba(245,200,66,0.3);}
+  .logo-name{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:4px;color:var(--gold);}
+  .nav-badge{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:2px;padding:3px 10px;border:1px solid var(--border);border-radius:2px;}
+  .nav-link{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--gold);text-decoration:none;letter-spacing:1px;padding:5px 14px;border:1px solid rgba(245,200,66,0.35);border-radius:2px;background:var(--gold-dim);transition:all 0.2s;}
+  .nav-link:hover{background:rgba(245,200,66,0.2);}
+
+  /* MAIN */
+  main{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:40px 24px 80px;}
+
+  /* HERO */
+  .hero{text-align:center;margin-bottom:48px;}
+  .hero-title{font-family:'Bebas Neue',sans-serif;font-size:48px;letter-spacing:4px;color:var(--text-bright);line-height:1;margin-bottom:8px;}
+  .hero-title span{color:var(--gold);}
+  .hero-sub{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px;margin-bottom:20px;}
+  .hero-pills{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+  .pill{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1px;padding:4px 12px;border-radius:2px;}
+
+  /* DIAGRAM CONTAINER */
+  .diagram-wrap{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:32px 24px 24px;overflow-x:auto;}
+
+  /* SVG layers */
+  .layer-label{font-family:'Share Tech Mono',monospace;font-size:10px;fill:var(--text-dim);letter-spacing:1px;}
+  .divider{stroke:var(--border2);stroke-width:0.5;stroke-dasharray:5 4;}
+  text{font-family:'Rajdhani',sans-serif;}
+  .t-title{font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:600;fill:inherit;}
+  .t-sub{font-family:'Rajdhani',sans-serif;font-size:11px;fill:inherit;opacity:0.8;}
+
+  /* Nodes */
+  .node{cursor:pointer;}
+  .node:hover rect{filter:brightness(1.15);}
+  .node-purple rect{fill:#2a1d5c;stroke:#7c4dff;stroke-width:0.5;}
+  .node-purple text{fill:#b39ddb;}
+  .node-purple .t-title{fill:#d1c4e9;}
+  .node-teal rect{fill:#0d2e2a;stroke:#00bfa5;stroke-width:0.5;}
+  .node-teal text{fill:#80cbc4;}
+  .node-teal .t-title{fill:#b2dfdb;}
+  .node-gray rect{fill:#1a2029;stroke:#455a64;stroke-width:0.5;}
+  .node-gray text{fill:#90a4ae;}
+  .node-gray .t-title{fill:#b0bec5;}
+  .node-amber rect{fill:#2d1e00;stroke:#ffab40;stroke-width:0.5;}
+  .node-amber text{fill:#ffcc80;}
+  .node-amber .t-title{fill:#ffe0b2;}
+  .node-green rect{fill:#0a2615;stroke:#00c853;stroke-width:0.5;}
+  .node-green text{fill:#a5d6a7;}
+  .node-green .t-title{fill:#c8e6c9;}
+  .node-coral rect{fill:#2d1108;stroke:#ff6e40;stroke-width:0.5;}
+  .node-coral text{fill:#ffab91;}
+  .node-coral .t-title{fill:#ffccbc;}
+
+  /* Arrows */
+  .arr{fill:none;stroke-width:1.2;marker-end:url(#arr);}
+  .arr-purple{stroke:#7c4dff44;}
+  .arr-gray{stroke:#455a6444;}
+  .arr-amber{stroke:#ffab4044;}
+  .arr-coral{stroke:#ff6e4044;stroke-dasharray:5 4;}
+
+  /* LEGEND */
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:20px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;}
+  .legend-item{display:flex;align-items:center;gap:7px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:0.5px;}
+  .legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+
+  /* DETAIL CARDS */
+  .detail-section{margin-top:40px;}
+  .section-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:3px;color:var(--gold);margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
+  .card{padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:3px;border-top:2px solid;}
+  .card-title{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;margin-bottom:8px;}
+  .card-body{font-size:12px;color:var(--text-dim);line-height:1.65;}
+  .card-body li{list-style:none;padding:2px 0;}
+  .card-body li::before{content:"▸ ";color:var(--text-dim);}
+
+  /* FLOW SECTION */
+  .flow-section{margin-top:40px;}
+  .flow{display:flex;align-items:center;flex-wrap:wrap;gap:0;}
+  .flow-step{padding:10px 16px;background:var(--surface);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text);}
+  .flow-arrow{font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--text-dim);padding:0 4px;}
+
+  /* FOOTER */
+  footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:20px 32px;display:flex;justify-content:space-between;align-items:center;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;}
+
+  @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.3}}
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse-dot 1.4s infinite;margin-right:5px;}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="scanlines"></div>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">
+    <div class="logo-icon">PA</div>
+    <span class="logo-name">PASE AI</span>
+    <span class="nav-badge">SYSTEM ARCHITECTURE</span>
+  </div>
+  <a href="https://signal-analyzer.vercel.app" class="nav-link" target="_blank">LAUNCH APP →</a>
+</nav>
+
+<main>
+  <!-- HERO -->
+  <div class="hero">
+    <h1 class="hero-title">PASE AI <span>ARCHITECTURE</span></h1>
+    <p class="hero-sub">NEXT.JS 14 · SUPABASE · ANTHROPIC · CLERK · VERCEL · FMP</p>
+    <div class="hero-pills">
+      <span class="pill" style="color:#b39ddb;background:#2a1d5c;border:1px solid #7c4dff44;">UI — 4 tabs + sidebar</span>
+      <span class="pill" style="color:#80cbc4;background:#0d2e2a;border:1px solid #00bfa544;">6-phase PA analysis</span>
+      <span class="pill" style="color:#ffcc80;background:#2d1e00;border:1px solid #ffab4044;">6 API routes</span>
+      <span class="pill" style="color:#a5d6a7;background:#0a2615;border:1px solid #00c85344;">Supabase + storage</span>
+      <span class="pill" style="color:#ffab91;background:#2d1108;border:1px solid #ff6e4044;">Claude vision + FMP</span>
+    </div>
+  </div>
+
+  <!-- MAIN DIAGRAM -->
+  <div class="diagram-wrap">
+    <svg width="100%" viewBox="0 0 1040 860" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- Layer labels -->
+    <text class="layer-label" x="28" y="100" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,28,100)">CLIENT</text>
+    <text class="layer-label" x="28" y="250" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,28,250)">EDGE</text>
+    <text class="layer-label" x="28" y="440" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,28,440)">API</text>
+    <text class="layer-label" x="28" y="630" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,28,630)">DATA</text>
+    <text class="layer-label" x="28" y="790" text-anchor="middle" dominant-baseline="central" transform="rotate(-90,28,790)">EXTERNAL</text>
+
+    <!-- Dividers -->
+    <line x1="50" y1="170" x2="1010" y2="170" class="divider"/>
+    <line x1="50" y1="340" x2="1010" y2="340" class="divider"/>
+    <line x1="50" y1="540" x2="1010" y2="540" class="divider"/>
+    <line x1="50" y1="720" x2="1010" y2="720" class="divider"/>
+
+    <!-- ── CLIENT LAYER ── -->
+    <!-- Tabs row -->
+    <g class="node node-purple" onclick="document.getElementById('d-analyze').scrollIntoView({behavior:'smooth'})">
+      <rect x="60" y="20" width="180" height="52" rx="5"/>
+      <text class="t-title" x="150" y="40" text-anchor="middle" dominant-baseline="central">Analyze tab</text>
+      <text class="t-sub"   x="150" y="58" text-anchor="middle" dominant-baseline="central">Upload · context · run</text>
+    </g>
+    <g class="node node-purple">
+      <rect x="256" y="20" width="160" height="52" rx="5"/>
+      <text class="t-title" x="336" y="40" text-anchor="middle" dominant-baseline="central">Journal tab</text>
+      <text class="t-sub"   x="336" y="58" text-anchor="middle" dominant-baseline="central">Outcomes · P&amp;L in R</text>
+    </g>
+    <g class="node node-purple">
+      <rect x="432" y="20" width="176" height="52" rx="5"/>
+      <text class="t-title" x="520" y="40" text-anchor="middle" dominant-baseline="central">Performance tab</text>
+      <text class="t-sub"   x="520" y="58" text-anchor="middle" dominant-baseline="central">Win rate · equity curve</text>
+    </g>
+    <g class="node node-purple">
+      <rect x="624" y="20" width="160" height="52" rx="5"/>
+      <text class="t-title" x="704" y="40" text-anchor="middle" dominant-baseline="central">Insights tab</text>
+      <text class="t-sub"   x="704" y="58" text-anchor="middle" dominant-baseline="central">Per-asset AI coaching</text>
+    </g>
+    <g class="node node-purple">
+      <rect x="800" y="20" width="140" height="52" rx="5"/>
+      <text class="t-title" x="870" y="40" text-anchor="middle" dominant-baseline="central">Docs page</text>
+      <text class="t-sub"   x="870" y="58" text-anchor="middle" dominant-baseline="central">Public · no auth</text>
+    </g>
+
+    <!-- Sidebar widgets row -->
+    <g class="node node-teal">
+      <rect x="60" y="96" width="160" height="52" rx="5"/>
+      <text class="t-title" x="140" y="116" text-anchor="middle" dominant-baseline="central">News calendar</text>
+      <text class="t-sub"   x="140" y="134" text-anchor="middle" dominant-baseline="central">FMP · 15 min refresh</text>
+    </g>
+    <g class="node node-teal">
+      <rect x="236" y="96" width="150" height="52" rx="5"/>
+      <text class="t-title" x="311" y="116" text-anchor="middle" dominant-baseline="central">Risk calculator</text>
+      <text class="t-sub"   x="311" y="134" text-anchor="middle" dominant-baseline="central">Lot size · TP profit</text>
+    </g>
+    <g class="node node-teal">
+      <rect x="402" y="96" width="170" height="52" rx="5"/>
+      <text class="t-title" x="487" y="116" text-anchor="middle" dominant-baseline="central">News warning</text>
+      <text class="t-sub"   x="487" y="134" text-anchor="middle" dominant-baseline="central">Imminent event banner</text>
+    </g>
+    <g class="node node-teal">
+      <rect x="588" y="96" width="190" height="52" rx="5"/>
+      <text class="t-title" x="683" y="116" text-anchor="middle" dominant-baseline="central">Beta onboarding</text>
+      <text class="t-sub"   x="683" y="134" text-anchor="middle" dominant-baseline="central">3-step · auto-approve</text>
+    </g>
+    <g class="node node-teal">
+      <rect x="794" y="96" width="150" height="52" rx="5"/>
+      <text class="t-title" x="869" y="116" text-anchor="middle" dominant-baseline="central">Landing page</text>
+      <text class="t-sub"   x="869" y="134" text-anchor="middle" dominant-baseline="central">Beta CTA · live demo</text>
+    </g>
+
+    <!-- ── EDGE LAYER ── -->
+    <g class="node node-gray">
+      <rect x="60" y="190" width="200" height="52" rx="5"/>
+      <text class="t-title" x="160" y="210" text-anchor="middle" dominant-baseline="central">Vercel edge</text>
+      <text class="t-sub"   x="160" y="228" text-anchor="middle" dominant-baseline="central">Next.js 14 · Turbopack</text>
+    </g>
+    <g class="node node-gray">
+      <rect x="280" y="190" width="200" height="52" rx="5"/>
+      <text class="t-title" x="380" y="210" text-anchor="middle" dominant-baseline="central">Clerk auth</text>
+      <text class="t-sub"   x="380" y="228" text-anchor="middle" dominant-baseline="central">JWT · middleware · Clerk UI</text>
+    </g>
+    <g class="node node-gray">
+      <rect x="500" y="190" width="200" height="52" rx="5"/>
+      <text class="t-title" x="600" y="210" text-anchor="middle" dominant-baseline="central">Upstash Redis</text>
+      <text class="t-sub"   x="600" y="228" text-anchor="middle" dominant-baseline="central">Rate limit 10/hr per user</text>
+    </g>
+    <g class="node node-gray">
+      <rect x="720" y="190" width="220" height="52" rx="5"/>
+      <text class="t-title" x="830" y="210" text-anchor="middle" dominant-baseline="central">Middleware</text>
+      <text class="t-sub"   x="830" y="228" text-anchor="middle" dominant-baseline="central">Route guard · redirects</text>
+    </g>
+
+    <!-- ── API LAYER ── -->
+    <g class="node node-amber" id="d-analyze">
+      <rect x="60" y="360" width="210" height="68" rx="5"/>
+      <text class="t-title" x="165" y="380" text-anchor="middle" dominant-baseline="central">/api/analyze</text>
+      <text class="t-sub"   x="165" y="398" text-anchor="middle" dominant-baseline="central">Sharp · 6-phase prompt</text>
+      <text class="t-sub"   x="165" y="414" text-anchor="middle" dominant-baseline="central">Auto-session · FMP · zones</text>
+    </g>
+    <g class="node node-amber">
+      <rect x="290" y="360" width="175" height="68" rx="5"/>
+      <text class="t-title" x="377" y="380" text-anchor="middle" dominant-baseline="central">/api/journal</text>
+      <text class="t-sub"   x="377" y="398" text-anchor="middle" dominant-baseline="central">GET paginated list</text>
+      <text class="t-sub"   x="377" y="414" text-anchor="middle" dominant-baseline="central">PATCH outcome marking</text>
+    </g>
+    <g class="node node-amber">
+      <rect x="485" y="360" width="185" height="68" rx="5"/>
+      <text class="t-title" x="577" y="380" text-anchor="middle" dominant-baseline="central">/api/performance</text>
+      <text class="t-sub"   x="577" y="398" text-anchor="middle" dominant-baseline="central">Win rate · equity curve</text>
+      <text class="t-sub"   x="577" y="414" text-anchor="middle" dominant-baseline="central">/api/insights AI coaching</text>
+    </g>
+    <g class="node node-amber">
+      <rect x="690" y="360" width="165" height="68" rx="5"/>
+      <text class="t-title" x="772" y="380" text-anchor="middle" dominant-baseline="central">/api/beta</text>
+      <text class="t-sub"   x="772" y="398" text-anchor="middle" dominant-baseline="central">Onboard · limit check</text>
+      <text class="t-sub"   x="772" y="414" text-anchor="middle" dominant-baseline="central">Counter increment</text>
+    </g>
+    <g class="node node-amber">
+      <rect x="875" y="360" width="120" height="68" rx="5"/>
+      <text class="t-title" x="935" y="380" text-anchor="middle" dominant-baseline="central">/api/news</text>
+      <text class="t-sub"   x="935" y="398" text-anchor="middle" dominant-baseline="central">FMP calendar</text>
+      <text class="t-sub"   x="935" y="414" text-anchor="middle" dominant-baseline="central">/api/admin</text>
+    </g>
+
+    <!-- ── DATA LAYER ── -->
+    <g class="node node-green">
+      <rect x="60" y="560" width="220" height="52" rx="5"/>
+      <text class="t-title" x="170" y="580" text-anchor="middle" dominant-baseline="central">pa_signals</text>
+      <text class="t-sub"   x="170" y="598" text-anchor="middle" dominant-baseline="central">41 cols · zones · phases · JSON</text>
+    </g>
+    <g class="node node-green">
+      <rect x="300" y="560" width="200" height="52" rx="5"/>
+      <text class="t-title" x="400" y="580" text-anchor="middle" dominant-baseline="central">beta_users</text>
+      <text class="t-sub"   x="400" y="598" text-anchor="middle" dominant-baseline="central">usage · beta_feedback</text>
+    </g>
+    <g class="node node-green">
+      <rect x="520" y="560" width="200" height="52" rx="5"/>
+      <text class="t-title" x="620" y="580" text-anchor="middle" dominant-baseline="central">Supabase storage</text>
+      <text class="t-sub"   x="620" y="598" text-anchor="middle" dominant-baseline="central">pa-screenshots bucket</text>
+    </g>
+    <g class="node node-green">
+      <rect x="740" y="560" width="200" height="52" rx="5"/>
+      <text class="t-title" x="840" y="580" text-anchor="middle" dominant-baseline="central">RLS policies</text>
+      <text class="t-sub"   x="840" y="598" text-anchor="middle" dominant-baseline="central">Row-level · service role bypass</text>
+    </g>
+
+    <!-- ── EXTERNAL LAYER ── -->
+    <g class="node node-coral">
+      <rect x="60" y="740" width="200" height="52" rx="5"/>
+      <text class="t-title" x="160" y="760" text-anchor="middle" dominant-baseline="central">Anthropic API</text>
+      <text class="t-sub"   x="160" y="778" text-anchor="middle" dominant-baseline="central">claude-sonnet-4 · vision</text>
+    </g>
+    <g class="node node-coral">
+      <rect x="280" y="740" width="180" height="52" rx="5"/>
+      <text class="t-title" x="370" y="760" text-anchor="middle" dominant-baseline="central">FMP API</text>
+      <text class="t-sub"   x="370" y="778" text-anchor="middle" dominant-baseline="central">Economic calendar · free tier</text>
+    </g>
+    <g class="node node-coral">
+      <rect x="480" y="740" width="180" height="52" rx="5"/>
+      <text class="t-title" x="570" y="760" text-anchor="middle" dominant-baseline="central">Vercel analytics</text>
+      <text class="t-sub"   x="570" y="778" text-anchor="middle" dominant-baseline="central">Page views · events</text>
+    </g>
+    <g class="node node-coral">
+      <rect x="680" y="740" width="160" height="52" rx="5"/>
+      <text class="t-title" x="760" y="760" text-anchor="middle" dominant-baseline="central">Clerk (auth)</text>
+      <text class="t-sub"   x="760" y="778" text-anchor="middle" dominant-baseline="central">User mgmt · sessions</text>
+    </g>
+    <g class="node node-coral">
+      <rect x="860" y="740" width="130" height="52" rx="5"/>
+      <text class="t-title" x="925" y="760" text-anchor="middle" dominant-baseline="central">GitHub</text>
+      <text class="t-sub"   x="925" y="778" text-anchor="middle" dominant-baseline="central">Source · CI/CD</text>
+    </g>
+
+    <!-- ── ARROWS Client → Edge ── -->
+    <line x1="150" y1="72" x2="150" y2="188" class="arr arr-purple"/>
+    <line x1="336" y1="72" x2="336" y2="188" class="arr arr-purple"/>
+    <line x1="520" y1="72" x2="520" y2="188" class="arr arr-purple"/>
+    <line x1="704" y1="72" x2="704" y2="188" class="arr arr-purple"/>
+
+    <!-- Edge → API -->
+    <line x1="160" y1="242" x2="160" y2="358" class="arr arr-gray"/>
+    <line x1="380" y1="242" x2="340" y2="358" class="arr arr-gray"/>
+    <line x1="600" y1="242" x2="500" y2="358" class="arr arr-gray"/>
+
+    <!-- API → Data -->
+    <line x1="165" y1="428" x2="165" y2="558" class="arr arr-amber"/>
+    <line x1="377" y1="428" x2="370" y2="558" class="arr arr-amber"/>
+    <line x1="577" y1="428" x2="577" y2="558" class="arr arr-amber"/>
+    <line x1="772" y1="428" x2="420" y2="558" class="arr arr-amber"/>
+
+    <!-- API → External (dashed) -->
+    <line x1="165" y1="428" x2="160" y2="738" class="arr arr-coral"/>
+    <line x1="935" y1="428" x2="400" y2="738" class="arr arr-coral"/>
+
+    </svg>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#7c4dff;"></div>UI tabs &amp; pages</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#00bfa5;"></div>Sidebar widgets</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#455a64;"></div>Edge / infrastructure</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffab40;"></div>API routes</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#00c853;"></div>Supabase database</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ff6e40;"></div>External services</div>
+  </div>
+
+  <!-- ANALYSIS FLOW -->
+  <div class="flow-section">
+    <h2 class="section-title">ANALYSIS REQUEST FLOW</h2>
+    <div class="flow">
+      <div class="flow-step">Trader uploads chart</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Middleware checks JWT</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Redis rate limit check</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Beta limit check</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Sharp strips EXIF</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">FMP news fetch</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Learning context built</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Claude Sonnet vision</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">JSON parsed &amp; validated</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Save to pa_signals (ENTER only)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Screenshots uploaded async</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Result returned to UI</div>
+    </div>
+  </div>
+
+  <!-- DETAIL CARDS -->
+  <div class="detail-section">
+    <h2 class="section-title">KEY DESIGN DECISIONS</h2>
+    <div class="cards">
+      <div class="card" style="border-top-color:#ffab40;">
+        <div class="card-title" style="color:#ffcc80;">6-PHASE PA ENGINE</div>
+        <ul class="card-body">
+          <li>Trend structure (HTF + LTF)</li>
+          <li>Key level confluence</li>
+          <li>Entry pattern identification</li>
+          <li>Momentum confirmation</li>
+          <li>Session + FMP news timing</li>
+          <li>Zone-based R:R calculation</li>
+        </ul>
+      </div>
+      <div class="card" style="border-top-color:#00bfa5;">
+        <div class="card-title" style="color:#80cbc4;">ZONE-BASED TRADE PLAN</div>
+        <ul class="card-body">
+          <li>Entry zone (low / high)</li>
+          <li>Re-entry zone + reason</li>
+          <li>Stop loss (single structural)</li>
+          <li>TP1 zone (1.5R band)</li>
+          <li>TP2 zone (2.5R band)</li>
+          <li>Backward compat midpoint</li>
+        </ul>
+      </div>
+      <div class="card" style="border-top-color:#7c4dff;">
+        <div class="card-title" style="color:#b39ddb;">BETA SYSTEM</div>
+        <ul class="card-body">
+          <li>Auto-approve on sign-up</li>
+          <li>10 free analyses limit</li>
+          <li>Feedback at key moments</li>
+          <li>Admin bypass via env var</li>
+          <li>Admin dashboard /admin</li>
+          <li>Supabase beta_feedback table</li>
+        </ul>
+      </div>
+      <div class="card" style="border-top-color:#00c853;">
+        <div class="card-title" style="color:#a5d6a7;">LEARNING SYSTEM</div>
+        <ul class="card-body">
+          <li>Builds from 4+ completed trades</li>
+          <li>Win rate by conviction tier</li>
+          <li>Win rate by session</li>
+          <li>Injected into every prompt</li>
+          <li>Per-asset AI insights (3+ trades)</li>
+          <li>Persisted to localStorage</li>
+        </ul>
+      </div>
+      <div class="card" style="border-top-color:#ff6e40;">
+        <div class="card-title" style="color:#ffab91;">SMART DEFAULTS</div>
+        <ul class="card-body">
+          <li>Auto-detect session from UTC</li>
+          <li>ENTER only → save to journal</li>
+          <li>WAIT / SKIP → not logged</li>
+          <li>15-min server cache on news</li>
+          <li>30s auto-refresh journal</li>
+          <li>60s auto-refresh performance</li>
+        </ul>
+      </div>
+      <div class="card" style="border-top-color:#29b6f6;">
+        <div class="card-title" style="color:#81d4fa;">STACK</div>
+        <ul class="card-body">
+          <li>Next.js 14 + TypeScript</li>
+          <li>Supabase + RLS + storage</li>
+          <li>Clerk auth + middleware</li>
+          <li>Upstash Redis rate limiting</li>
+          <li>Sharp image processing</li>
+          <li>Vercel deploy + analytics</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div><span class="live-dot"></span>PASE AI · BETA 2026</div>
+  <div>Next.js 14 · Supabase · Anthropic · Clerk · Vercel</div>
+  <div>For educational purposes only. Not financial advice.</div>
+</footer>
+
+</body>
+</html>
